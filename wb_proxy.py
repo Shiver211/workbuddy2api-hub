@@ -31,15 +31,13 @@ import json
 import os
 import queue
 import random
-# 单请求体上限。默认值从 50MB 收紧到 16MB，是「内存护栏」：body 先整体读成 bytes、
-# 再 decode 成 str、再 json.loads 成对象，实测 50MB body 的 decode+parse 峰值约
-# 109MB、单请求峰值约 160MB；而读 body 发生在 chat 信号量 acquire 之前、线程数又
-# 没有上限，路由器（可用内存约 480MB）上几个并发大 body 就能把机器打穿。
-# 权衡：另一条路是把 body 读取也纳入 chat 信号量，但那会改动 401/404/413 早退与
-# 503 的先后语义、并让慢客户端占着 slot 拖住信号量；只收紧默认值保守得多——16MB
-# 对正常客户端绰绰有余（Codex 1M token 上下文的 JSON 也只有几 MB），确需更大可
-# 显式设 WB_MAX_PAYLOAD_BYTES，内存代价由运维者自己拍板。
-MAX_PAYLOAD_BYTES = int(os.environ.get("WB_MAX_PAYLOAD_BYTES", 16 * 1024 * 1024))  # 16MB limit
+# 单请求体上限。本部署改回 50MB（上游为小内存路由器收紧到 16MB），内存放大仍在：
+# body 先整体读成 bytes、再 decode 成 str、再 json.loads 成对象，实测 50MB body 的
+# decode+parse 峰值约 109MB、单请求峰值约 160MB；而读 body 发生在 chat 信号量
+# acquire 之前、线程数又没有上限，小内存机器（路由器可用内存约 480MB）上几个并发
+# 大 body 就能把机器打穿——50MB 默认下请自行控制并发大请求，或用
+# WB_MAX_PAYLOAD_BYTES 调低，内存代价由运维者自己拍板。
+MAX_PAYLOAD_BYTES = int(os.environ.get("WB_MAX_PAYLOAD_BYTES", 50 * 1024 * 1024))  # 50MB limit
 # Upstream chat calls may hold a handler thread for up to 600s, and every
 # request gets its own thread, so an unbounded pool lets a handful of slow
 # clients pin hundreds of threads and the memory behind them. Bound the number
@@ -13658,7 +13656,7 @@ def gateway_hint(status, message):
     lower = text.lower()
     if status == 413 and "payload too large" in lower:
         return ("single request body exceeds the gateway cap "
-                "(WB_MAX_PAYLOAD_BYTES, default 16MB); raise it and restart wb-proxy")
+                "(WB_MAX_PAYLOAD_BYTES, default 50MB); raise it and restart wb-proxy")
     if status == 503 and "concurrent chat limit" in lower:
         return "gateway is busy at its concurrency limit; retry shortly"
     if ("11133" in lower or "model_param_invalid" in lower
