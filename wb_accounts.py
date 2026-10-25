@@ -215,6 +215,26 @@ def is_tls_verify_text(text):
     return is_tls_verify_error(TLSVerifyError(str(text)))
 
 
+#: TLS 传输层被掐的字符串标记。与证书校验失败（配置问题，重试必然同结果）
+#: 互补的一类：SSLEOFError（握手中途 EOF）/ 连接重置——网络或 CDN 边缘把
+#: 到沙箱主机的 TLS 掐断。轮次重试全部耗尽后仍是这个形态，说明今天这条腿
+#: 从本网络就是接不通；开关打开时与证书失败同样回退活跃上报。
+TLS_TRANSPORT_MARKERS = (
+    "unexpected_eof_while_reading",
+    "ssleoferror",
+    "connectionreseterror",
+    "connection reset by peer",
+)
+
+
+def is_tls_transport_text(text):
+    """True when a stringified error is a TLS transport cut, not a verdict."""
+    if not text:
+        return False
+    lower = str(text).lower()
+    return any(marker in lower for marker in TLS_TRANSPORT_MARKERS)
+
+
 def _retryable(exc):
     """Transient network faults worth another attempt (TLS resets, timeouts, 5xx)."""
     if is_tls_verify_error(exc):
@@ -2647,22 +2667,29 @@ class Account(object):
                     result["error"] = "网页通道失败：%s%s" % (res.get("error"), suffix)
                     result["msg"] = "每日活跃对话未完成（网页通道失败：%s%s）" % (
                         res.get("error"), suffix)
-                    # 沙箱入口证书校验失败（#645）不属于「这一轮没跑完」，重试同一轮
-                    # 永远不会成功；而成长连登只需要一条 POST /v2/report 就能点亮。
-                    # 开关打开时改走活跃上报，把当天算完成（默认关，行为不变）。
+                    # 沙箱入口的 TLS 失败不属于「这一轮没跑完」：证书校验失败（#645）
+                    # 是配置问题，重试同一轮永远不会成功；SSLEOFError / 连接重置这类
+                    # 传输被掐（http_json 同款经验：偶发、重开即过，但轮次重试全部
+                    # 耗尽仍是它，说明今天这条腿从本网络接不通）。两种形态下成长连登
+                    # 都只需要一条 POST /v2/report 就能点亮。开关打开时改走活跃上报，
+                    # 把当天算完成（默认关，行为不变）。
                     fallback_on = (bool(self.path)
                                    and wb_settings.daily_chat_web_fallback_activity(
                                        os.path.dirname(self.path)))
-                    if fallback_on and is_tls_verify_text(res.get("error")):
+                    web_error = res.get("error")
+                    if fallback_on and (is_tls_verify_text(web_error)
+                                        or is_tls_transport_text(web_error)):
                         fb = self.report_activity()
                         result["web_fallback"] = fb
                         if fb.get("ok"):
                             web_ok = True
                             result["ok"] = True
                             result.pop("error", None)
+                            reason = ("证书校验失败" if is_tls_verify_text(web_error)
+                                      else "TLS 连接失败")
                             result["msg"] = (
-                                "每日活跃对话：网页通道证书校验失败，已回退对话活跃上报（%s）"
-                                % (fb.get("msg") or ""))
+                                "每日活跃对话：网页通道%s，已回退对话活跃上报（%s）"
+                                % (reason, fb.get("msg") or ""))
             # 只有真正计入官方「每日活跃」的网页通道成功了才算今天做过：网页腿失败时
             # 若照写 lastDailyChat，当天后续巡检会直接跳过该账号，那天的 30/50 积分静默
             # 丢掉且不再重试。web=False（没开网页通道）时维持原语义：桌面腿成功即算完成。

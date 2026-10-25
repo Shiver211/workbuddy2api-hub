@@ -25,6 +25,15 @@ import urllib.parse
 
 PROTOCOL_VERSION = 1
 
+#: 瞬时传输失败（TLS 握手被掐成 SSLEOFError、连接被重置）的快速重试口径，
+#: 与 wb_accounts.http_json 的既有经验一致：国内网络 / CDN 边缘偶发掐掉一次
+#: 握手，重开一次几乎总能过。ACP 这条腿是打卡链路里唯一裸 http.client、
+#: 没走 http_json 的上游，漏掉了那层重试；而一轮要握手 5 次（SSE 开道 +
+#: initialize/load/set_model/prompt 四个 POST），任何一次被掐都整轮报废，
+#: 靠外层换模型重试代价大得多（重新建会话 + 重等预算）。
+CONNECT_ATTEMPTS = 3
+CONNECT_BACKOFF = 1.0
+
 #: 打卡只需要 agent 自己把话说完，不需要客户端提供文件系统/终端能力。
 CLIENT_CAPABILITIES = {
     "fs": {"readTextFile": False, "writeTextFile": False},
@@ -113,25 +122,40 @@ class AcpChannel(object):
     def open(self):
         """建立 SSE 通道，返回服务端给的 Acp-Connection-Id。"""
         parsed, _port = self._target()
-        conn = self._connect()
-        conn.putrequest("GET", parsed.path or "/")
-        conn.putheader("Accept", "text/event-stream")
-        conn.putheader("Authorization", "Bearer " + self.token)
-        conn.putheader("User-Agent", self.user_agent)
-        conn.endheaders()
-        resp = conn.getresponse()
-        if resp.status != 200:
-            conn.close()
-            raise AcpError("SSE 通道返回 HTTP %s" % resp.status)
-        connection_id = resp.getheader("Acp-Connection-Id") or ""
-        if not connection_id:
-            conn.close()
-            raise AcpError("SSE 通道没有返回 Acp-Connection-Id")
-        self._conn = conn
-        self.connection_id = connection_id
-        self._reader = threading.Thread(target=self._read_events, args=(resp,), daemon=True)
-        self._reader.start()
-        return connection_id
+        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+            conn = self._connect()
+            try:
+                conn.putrequest("GET", parsed.path or "/")
+                conn.putheader("Accept", "text/event-stream")
+                conn.putheader("Authorization", "Bearer " + self.token)
+                conn.putheader("User-Agent", self.user_agent)
+                conn.endheaders()
+                resp = conn.getresponse()
+                if resp.status != 200:
+                    conn.close()
+                    raise AcpError("SSE 通道返回 HTTP %s" % resp.status)
+                connection_id = resp.getheader("Acp-Connection-Id") or ""
+                if not connection_id:
+                    conn.close()
+                    raise AcpError("SSE 通道没有返回 Acp-Connection-Id")
+                self._conn = conn
+                self.connection_id = connection_id
+                self._reader = threading.Thread(target=self._read_events, args=(resp,), daemon=True)
+                self._reader.start()
+                return connection_id
+            except AcpError:
+                # 协议层结论（HTTP 401/404、缺头）：重试同一请求无益，照旧抛。
+                raise
+            except (http.client.HTTPException, OSError) as exc:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                if attempt >= CONNECT_ATTEMPTS:
+                    raise
+                self.log("web agent: SSE 通道传输失败 (%s)，第 %d 次重开"
+                         % (exc, attempt))
+                time.sleep(CONNECT_BACKOFF * attempt)
 
     def _read_events(self, resp):
         """把 SSE 流解析成 JSON-RPC 消息，塞进 self.events。"""
@@ -168,22 +192,30 @@ class AcpChannel(object):
         parsed, _port = self._target()
         body = json.dumps({"jsonrpc": "2.0", "id": request_id,
                            "method": method, "params": params}).encode("utf-8")
-        conn = self._connect()
-        try:
-            conn.putrequest("POST", parsed.path or "/")
-            conn.putheader("Content-Type", "application/json")
-            conn.putheader("Accept", "application/json, text/event-stream")
-            conn.putheader("Acp-Connection-Id", self.connection_id)
-            conn.putheader("Authorization", "Bearer " + self.token)
-            conn.putheader("User-Agent", self.user_agent)
-            conn.putheader("Content-Length", str(len(body)))
-            conn.endheaders()
-            conn.send(body)
-            resp = conn.getresponse()
-            resp.read()
-            status = resp.status
-        finally:
-            conn.close()
+        for attempt in range(1, CONNECT_ATTEMPTS + 1):
+            conn = self._connect()
+            try:
+                conn.putrequest("POST", parsed.path or "/")
+                conn.putheader("Content-Type", "application/json")
+                conn.putheader("Accept", "application/json, text/event-stream")
+                conn.putheader("Acp-Connection-Id", self.connection_id)
+                conn.putheader("Authorization", "Bearer " + self.token)
+                conn.putheader("User-Agent", self.user_agent)
+                conn.putheader("Content-Length", str(len(body)))
+                conn.endheaders()
+                conn.send(body)
+                resp = conn.getresponse()
+                resp.read()
+                status = resp.status
+                break
+            except (http.client.HTTPException, OSError) as exc:
+                if attempt >= CONNECT_ATTEMPTS:
+                    raise
+                self.log("web agent: %s 传输失败 (%s)，第 %d 次重开"
+                         % (method, exc, attempt))
+                time.sleep(CONNECT_BACKOFF * attempt)
+            finally:
+                conn.close()
         if status not in (200, 202):
             raise AcpError("%s 返回 HTTP %s" % (method, status))
         return status

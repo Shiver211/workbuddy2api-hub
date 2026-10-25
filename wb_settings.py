@@ -2561,12 +2561,14 @@ def daily_chat_web_fallback_activity(accounts_dir):
     Off unless the operator turns it on. The web channel is the only leg that
     actually earns the daily reward, so its failure is reported as a failure -
     otherwise the day looks done and the credits silently never arrive. The
-    exception is a certificate failure on the sandbox endpoint (#645): that is
-    an upstream/network configuration fault, retrying the same turn cannot
-    fix it, and leaving the whole day failed while the streak can be lit by a
-    plain POST /v2/report costs the operator the streak too. With this switch
-    on, a TLS failure on the web leg reports activity instead of failing the
-    round. Every other web failure keeps its old meaning.
+    exceptions are TLS failures on the sandbox endpoint after the retry rounds
+    are spent: a certificate failure (#645) is an upstream/network
+    configuration fault the same turn can never fix, and a transport cut
+    (SSLEOFError / connection reset) that survived every round means the leg
+    is unreachable from this network today. Either way the streak can still
+    be lit by a plain POST /v2/report, so with this switch on the web leg
+    reports activity instead of failing the day. Every other web failure
+    keeps its old meaning.
     """
     return load(accounts_dir).get(DAILY_CHAT_WEB_FALLBACK_ACTIVITY_KEY) is True
 

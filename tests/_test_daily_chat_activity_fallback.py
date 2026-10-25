@@ -6,9 +6,10 @@ mismatch。这一轮重试永远不可能成功，而成长连登只需要一条
 
 这里钉四件事：
 1. 国际版的活跃上报与连登查询都走它自己的 base（www.workbuddy.ai），不是国内 base；
-2. 网页腿证书校验失败且开关打开时，改走活跃上报并把当天算完成；
+2. 网页腿 TLS 失败（证书校验失败 #645、或 SSLEOFError / 连接重置这类传输被掐）
+   且开关打开时，改走活跃上报并把当天算完成；
 3. 开关默认关，关着时行为与以前完全一致（仍如实报失败、不写 lastDailyChat）；
-4. 非证书类失败一律不降级，避免把「真的没跑完」也算成完成。
+4. 非 TLS 类失败一律不降级，避免把「真的没跑完」也算成完成。
 
 Run with: python tests/run_all.py daily_chat_activity_fallback
 """
@@ -28,6 +29,9 @@ UID = "5f3d1c02-0a51-4a0e-9a5f-2f3d6cd0b7a1"
 TLS_ERROR = ("SSLCertVerificationError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate "
              "verify failed: Hostname mismatch, certificate is not valid for "
              "'65225-2113853771288948736.workbuddy.cloudagent-app.net'. (_ssl.c:1016)")
+# 真实日志里的传输层错误文本（2026-10-25）：到沙箱主机的 TLS 被网络/边缘掐断。
+TRANSPORT_ERROR = ("SSLEOFError: [SSL: UNEXPECTED_EOF_WHILE_READING] "
+                   "EOF occurred in violation of protocol (_ssl.c:1082)")
 NON_TLS_ERROR = "会话在 120s 内没有跑完（状态=working）"
 
 
@@ -130,6 +134,23 @@ class TlsTextTests(unittest.TestCase):
             self.assertTrue(wb_accounts.is_tls_verify_text("X: " + marker), marker)
 
 
+class TransportTextTests(unittest.TestCase):
+    def test_the_upstream_string_is_recognised(self):
+        """传输被掐（SSLEOFError）与证书失败是两类，各自只认各自的标记。"""
+        self.assertTrue(wb_accounts.is_tls_transport_text(TRANSPORT_ERROR))
+        self.assertFalse(wb_accounts.is_tls_verify_text(TRANSPORT_ERROR))
+        self.assertFalse(wb_accounts.is_tls_transport_text(TLS_ERROR))
+
+    def test_a_reset_is_a_transport_cut_too(self):
+        self.assertTrue(wb_accounts.is_tls_transport_text(
+            "ConnectionResetError: [Errno 54] Connection reset by peer"))
+
+    def test_other_failures_are_not_transport_cuts(self):
+        self.assertFalse(wb_accounts.is_tls_transport_text(NON_TLS_ERROR))
+        self.assertFalse(wb_accounts.is_tls_transport_text(""))
+        self.assertFalse(wb_accounts.is_tls_transport_text(None))
+
+
 class SwitchTests(unittest.TestCase):
     def test_off_by_default(self):
         """行为变更默认关：升级后线上语义不变。"""
@@ -210,6 +231,24 @@ class FallbackTests(StubCase):
         self.assertNotIn("web_fallback", res)
         self.assertIsNone(acc.last_daily_chat)
         self.assertTrue(acc.can_daily_chat())         # 下一轮巡检还会重试
+
+    def test_a_transport_cut_falls_back_when_the_switch_is_on(self):
+        """开关打开：SSLEOFError 这类传输被掐（重试轮全部耗尽仍是它）同样降级。"""
+        directory = make_dir("fallback-transport")
+        wb_settings.set_daily_chat_web_fallback_activity(directory, True)
+        acc = make_account(directory)
+        self.install(TRANSPORT_ERROR)
+
+        res = acc.daily_chat(web=True)
+
+        self.assertTrue(res.get("ok"), res)
+        self.assertNotIn("网页通道失败", res.get("error") or "")
+        self.assertIn("TLS 连接失败", res.get("msg") or "")
+        self.assertIn("回退", res.get("msg") or "")
+        self.assertEqual(len(self.reported), 1)
+        self.assertTrue(res.get("web_fallback", {}).get("ok"), res)
+        self.assertTrue(acc.last_daily_chat)          # 当天算做过
+        self.assertFalse(acc.can_daily_chat())        # 巡检不再重复跑
 
     def test_a_non_certificate_failure_never_falls_back(self):
         """开关打开也不该把「真的没跑完」当成完成：那会让 30 积分静默丢掉。"""
