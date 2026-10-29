@@ -1,3 +1,24 @@
+## v1.9.0
+
+本版汇总 `v1.8.0` 之后的十个社区 PR，修复 APISIX 401 挑战头判定、DSH 11128 渠道指纹、收费模型 6004 跨重启持久化、池空 503/429 报错精准归因与用量行对齐、/health 区域与模型细分、零费率模型保留额度豁免、国际版每日活跃 11140 风控持久化避让，以及看板下拉与活动记录窄屏布局优化。套件 231 个（172 Python + 59 JS）。
+
+- **认网关的 `WWW-Authenticate` 判死 401，面板测试不再把「凭证真失效」显示成一页代理报错**（#686）：国内版上游是 APISIX，凭证被拒时回的是 `<html>401 Authorization Required</html>`，死因只在响应头 `WWW-Authenticate: Bearer realm="copilot", error="invalid_token"` 里。#435 为解决「中间代理页把健康号踢出池子」把所有带 `<html` 的 401 一律豁免，导致真失效的账号未被标记；现在 `http_error_message()` 将挑战头置前展示，`_auth_failure_text()` 在 HTML 豁免前识别 RFC 6750 的 `invalid_token`，真失效账号及时退出派单。新增 `tests/_test_token_expired.py` 断言。
+- **中和 DSH 文件引用段 11-128 渠道指纹**（#684 / #680 / #688 / #677 / #675）：DSH（DeepSeek Harness）官方插件 `@deepseek-ai/dsh-file-reference` 注入的 `FILE_REFERENCE_PROMPT` 被上游识别为非官方客户端特征并返回 400 / code 11128。通过对首句增加定语关系代词 `that` 进行微调，在保持模型语义等价与幂等的前提下打断连续文本匹配。新增 `tests/_test_sanitize_fingerprint.py` 回归覆盖。
+- **国内版收费模型撞 6004 也保住"配额耗尽"这个事实**（#668 / #672）：国内版计费模型（如 `deepseek-v4.1-flash`）撞上游 6004 配额耗尽时，将 `cappedAt` 连同窗口信息落盘至 `accounts/model_windows.json`，重启后由 `restore_window_cooldowns()` 挂回，面板不再误判为短时 429 临时限流。新增 `tests/_test_cap_mark_any_model.py`。
+- **池空报错说清"在等谁、等多久"**（#665 / #671）：API Key 绑定账号场景下，池空 503 报错精确定位绑定候选账号并输出逐账号原因；候选账号仅因等待模型冷却窗口恢复时，改回返回 429 与 `Retry-After`，避免客户端高频空转重试。新增 `tests/_test_no_usable_account_scope.py`。
+- **/health 按区域与模型报可用数**（#667 / #670）：`/health` 保留原汇总字段，新增 `accounts_by_realm`、`accounts_ready_by_realm`、`accounts_ready_current_realm` 与 `models_ready`，带 Key 调用时返回专属 `key_accounts_ready` 与 `key_accounts_bound`，准确反映模型可用性。新增 `tests/_test_health_readiness.py`。
+- **池空失败的状态码与用量行对齐**（#666 / #669）：统一错误出口（`upstream_failure_response()`），先确定状态码再落盘，使 `usage/usage.jsonl`、请求日志与实际给客户端返回的 503 状态码一致，消除 502/503 混淆。新增 `tests/_test_error_status_consistency.py`。
+- **签到与活跃记录窄屏挤压修复**（#653）：说明列与昵称列省略号截断收敛至 `.note-clip`，中屏上限收至 300px，手机端卡片折行显示全文，短标签列（时间/区域/任务/来源/结果）禁止逐字折行，行高恢复单行 42px。
+- **看板下拉不再误判全宽竖排**（#652）：自定义下拉 `enhance()` 仅认显式 `style.width: 100%`，避免 flex 子项与隐藏页签将 computed display 规范化为 block 导致 16 处下拉误判全宽竖排的问题。新增 `tests/_test_custom_select.js`。
+- **保留积分不再饿死免费模型**（#650）：正数 `reserve_credits` 只拦截付费或目录未知的模型；本区域目录标为 `x0.00` 的零费率模型免除阻断，避免低额保留误伤免费模型。新增 `tests/_test_reserve_free_models.py`。
+- **国际版每日活跃持久化 11140 风控限制并停止重试**（#649 / #659 / #661）：国际版桌面打卡腿遇 HTTP 403 / code 11140 时调用 `note_restricted()` 并持久化 `restrictedUntil`，限制期内 `can_daily_chat()` 返回 False，调度器自动跳过，避免重复撞墙加重风控。新增 `tests/_test_daily_chat.py` 覆盖。
+
+验证：
+
+- 本地完整矩阵：`231 passed, 0 failed, 0 skipped`（63s 全绿）。
+- GitHub Actions CI：Ubuntu 3.9、Ubuntu 3.12、Windows 3.12 与 revert guard 均通过。
+- 发布工程套件 `_test_release_engineering.py` 与发布资产套件 `_test_release_assets.py` 全部通过。
+
 ## v1.8.0
 
 本版汇总 `v1.7.33` 之后的四个修复，并补记此前已进入发布页、但未写入仓库 CHANGELOG 的三项改动。套件 226 个（167 Python + 59 JS）。

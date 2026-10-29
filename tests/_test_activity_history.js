@@ -242,7 +242,7 @@ const check = (label, cond, extra) => {
         historyOut().includes('title="&lt;img src=x onerror=alert(1)&gt; 上游 500"'),
         historyOut().slice(0, 300));
   check('the message cell truncates instead of widening the modal',
-        historyOut().includes('text-overflow:ellipsis'));
+        historyOut().includes('note-clip'));
   check('both results render, each on its own row',
         historyOut().includes('badge bad') && historyOut().includes('badge ok'));
 
@@ -302,7 +302,7 @@ const check = (label, cond, extra) => {
   check('the modal markup is in the shipped page',
         modal.includes('签到与每日活跃记录'), modal.slice(0, 80));
   check('the history table is a data-cards table, so it collapses on a phone',
-        modal.includes('<table class="data-cards">'));
+        modal.includes('<table class="data-cards activity-table">'));
   check('every filter control is in the modal',
         ['actRange', 'actUid', 'actTask', 'actResult'].every(id => modal.includes('id="' + id + '"')));
   check('an empty or failed list spans the whole card grid',
