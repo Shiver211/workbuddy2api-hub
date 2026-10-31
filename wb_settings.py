@@ -558,6 +558,13 @@ def _clean_key_entry(entry):
     except (TypeError, ValueError):
         concurrency = 0
     concurrency = max(0, concurrency)
+    try:
+        daily_credit = float(entry.get("daily_credit_limit") or 0)
+    except (TypeError, ValueError):
+        daily_credit = 0.0
+    daily_credit = max(0.0, round(daily_credit, 2))
+    if daily_credit.is_integer():
+        daily_credit = int(daily_credit)
     return {
         "id": str(entry.get("id") or secrets.token_hex(6)),
         "name": str(entry.get("name") or "").strip() or "未命名",
@@ -566,6 +573,7 @@ def _clean_key_entry(entry):
         "models": _clean_model_patterns(entry.get("models")),
         "accounts": _clean_account_refs(entry.get("accounts")),
         "concurrency_limit": concurrency,
+        "daily_credit_limit": daily_credit,
         "enabled": False if deleted_at else entry.get("enabled", True) is not False,
         "created_at": entry.get("created_at") or time.strftime("%Y/%m/%d %H:%M"),
         "deleted_at": deleted_at,
@@ -659,6 +667,9 @@ def _retired_key_entry(old):
         "key": "",
         "realm": old.get("realm") or "",
         "models": old.get("models") or [],
+        "accounts": old.get("accounts") or [],
+        "concurrency_limit": old.get("concurrency_limit") or 0,
+        "daily_credit_limit": old.get("daily_credit_limit") or 0,
         "enabled": False,
         "created_at": old.get("created_at") or "",
         "deleted_at": old.get("deleted_at") or time.strftime("%Y/%m/%d %H:%M"),

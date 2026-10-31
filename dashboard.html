@@ -2339,6 +2339,14 @@ button.page-nav-top:hover{background:var(--panel2);border-color:var(--accent);co
     '国际版账号今天都已打卡': 'Every Global account has checked in today',
     '今日未打卡账号': 'Accounts not checked in today',
     '每日积分限额': 'Daily credit limit',
+    '每日积分上限': 'Daily credit limit',
+    '每日积分已达上限': 'Daily credit limit reached',
+    '最大并发限制': 'Max concurrency limit',
+    ' (选填，0 = 不限)': ' (optional, 0 = unlimited)',
+    '0 代表不限制': '0 for unlimited',
+    '并发上限 ': 'Concurrency cap ',
+    '每日积分上限 ': 'Daily credit limit ',
+    ' (今日已用 ': ' (used today: ',
     '临期积分优先': 'Expiring credits first',
     '读取签到记录失败:': 'Failed to read the activity log:',
     '账号「最早到期的积分包」（还有剩余、且到期会真正作废的那些）距今不超过该天数时，分派优先使用临期积分的账号——分到的流量更多、越接近到期份额越大，但不会全压在一个账号上（到期日相同或相近的账号彼此等权）；这些账号暂时都不可用（冷却、达日限额等）时，其他账号照常顶上。填 0 表示关闭；天数取自各账号最近一次刷新的积分数据。': 'When the soonest-expiring credit package of an account (one that still has credits and would really lapse) is within this many days, dispatch prefers the accounts with expiring credits - they get a larger share, and the closer to expiry the bigger - but never all of it in one account (accounts expiring on or around the same day carry equal weight); when none of them is usable (cooling down, over a daily limit), the other accounts serve as usual. 0 turns it off; the day counts come from the most recent credit refresh of each account.',
@@ -2823,6 +2831,14 @@ button.page-nav-top:hover{background:var(--panel2);border-color:var(--accent);co
     '猫猫正在旅行途中，请稍后再来查看！': 'The cat is still travelling; check again later!'
   };
   var HANT_PHRASES = {
+    "每日积分上限": "每日積分上限",
+    "每日积分已达上限": "每日積分已達上限",
+    "最大并发限制": "最大並發限制",
+    "并发上限 ": "並發上限 ",
+    "每日积分上限 ": "每日積分上限 ",
+    " (今日已用 ": " (今日已用 ",
+    " (选填，0 = 不限)": " (選填，0 = 不限)",
+    "0 代表不限制": "0 代表不限制",
     "API 等价花费": "API 等價花費",
     "API 等价": "API 等價",
     " · 周期已过": " · 週期已過",
@@ -11936,6 +11952,8 @@ async function loadSettings(showToast){
       models: Array.isArray(k.models) ? k.models.slice() : [],
       accounts: Array.isArray(k.accounts) ? k.accounts.slice() : [],
       concurrency_limit: parseInt(k.concurrency_limit || 0, 10) || 0,
+      daily_credit_limit: parseFloat(k.daily_credit_limit || 0) || 0,
+      daily_credits_today: parseFloat(k.daily_credits_today || 0) || 0,
       enabled: k.enabled !== false,
       created_at: k.created_at || '',
       _editing: false,
@@ -13746,6 +13764,11 @@ function renderKeyRows(){
         +     '<input type="number" min="0" max="1000" id="editKeyConc_' + i + '" value="' + (row.concurrency_limit || '') + '" placeholder="0 代表不限制" '
         +       'style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;color:var(--fg)">'
         +   '</div>'
+        +   '<div>'
+        +     '<div style="font-size:12px;color:var(--dim);margin-bottom:4px;font-weight:500">每日积分上限 <span style="color:var(--dim-light)">(选填，0 = 不限)</span></div>'
+        +     '<input type="number" min="0" step="any" id="editKeyDailyCredit_' + i + '" value="' + (row.daily_credit_limit || '') + '" placeholder="0 代表不限制" '
+        +       'style="width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit;color:var(--fg)">'
+        +   '</div>'
         +   '<div style="grid-column:1 / -1">'
         +     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">'
         +       '<div style="font-size:12px;color:var(--dim);font-weight:500">模型准入 <span id="editKeyModelsSummary_' + i + '" style="color:var(--dim-light)"></span></div>'
@@ -13804,6 +13827,16 @@ function renderKeyRows(){
     const concBadge = (row.concurrency_limit && row.concurrency_limit > 0)
       ? '<span class="badge s mini" style="font-size:11px">并发上限 ' + row.concurrency_limit + '</span>'
       : '';
+    const dailyCreditLimit = parseFloat(row.daily_credit_limit || 0) || 0;
+    const dailyCreditsToday = parseFloat(row.daily_credits_today || 0) || 0;
+    let dailyCreditBadge = '';
+    if(dailyCreditLimit > 0){
+      if(dailyCreditsToday >= dailyCreditLimit){
+        dailyCreditBadge = '<span class="badge bad mini" style="font-size:11px">每日积分已达上限 (' + dailyCreditsToday.toFixed(1) + '/' + dailyCreditLimit + ')</span>';
+      } else {
+        dailyCreditBadge = '<span class="badge s mini" style="font-size:11px">每日积分上限 ' + dailyCreditLimit + (dailyCreditsToday > 0 ? (' (今日已用 ' + dailyCreditsToday.toFixed(1) + ')') : '') + '</span>';
+      }
+    }
     const modelBadge = (Array.isArray(row.models) && row.models.length)
       ? '<span class="badge s" style="font-size:11px">限 ' + esc(modelPatternsText(row.models)) + '</span>'
       : '';
@@ -13822,8 +13855,9 @@ function renderKeyRows(){
       +       statusBadge
       +       realmBadge
       +       modelBadge
-        +       accountBadge
-        +       concBadge
+      +       accountBadge
+      +       concBadge
+      +       dailyCreditBadge
       +     '</div>'
       +     '<div style="font-size:12px;color:var(--dim);display:flex;align-items:center;gap:16px;flex-wrap:wrap">'
       +       '<span>Key: <span class="mono" style="color:var(--fg);font-weight:500">' + esc(displayKey) + '</span></span>'
@@ -14025,7 +14059,8 @@ async function saveSingleKey(index, btn){
   const nameInput = document.getElementById('editKeyName_' + index);
   const realmSelect = document.getElementById('editKeyRealm_' + index);
   const keyInput = document.getElementById('editKeyValue_' + index);
-    const concInput = document.getElementById('editKeyConc_' + index);
+  const concInput = document.getElementById('editKeyConc_' + index);
+  const dailyCreditInput = document.getElementById('editKeyDailyCredit_' + index);
 
   const name = nameInput ? nameInput.value.trim() : (row.name || '');
   const realm = realmSelect ? realmSelect.value : (row.realm || '');
@@ -14040,7 +14075,8 @@ async function saveSingleKey(index, btn){
   row.realm = realm;
   row.models = Array.isArray(row.models) ? row.models.slice() : [];
   row.accounts = Array.isArray(row.accounts) ? row.accounts.slice() : [];
-    row.concurrency_limit = Math.max(0, parseInt((concInput ? concInput.value : row.concurrency_limit) || 0, 10) || 0);
+  row.concurrency_limit = Math.max(0, parseInt((concInput ? concInput.value : row.concurrency_limit) || 0, 10) || 0);
+  row.daily_credit_limit = Math.max(0, parseFloat((dailyCreditInput ? dailyCreditInput.value : row.daily_credit_limit) || 0) || 0);
   if(keyVal) row.key = keyVal;
   row._editing = false;
 
@@ -14206,7 +14242,8 @@ async function saveApiKeys(btn){
       realm: row.realm || '',
       models: row.models || [],
       accounts: row.accounts || [],
-        concurrency_limit: parseInt(row.concurrency_limit || 0, 10) || 0,
+      concurrency_limit: parseInt(row.concurrency_limit || 0, 10) || 0,
+      daily_credit_limit: parseFloat(row.daily_credit_limit || 0) || 0,
       enabled: row.enabled !== false,
       // Blank means "keep the stored key", which the server honours per row.
       key: (row.key || '').trim(),

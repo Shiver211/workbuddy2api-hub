@@ -1863,7 +1863,7 @@ _STATS_TTL = float(os.environ.get("WB_STATS_TTL", 15))
 # reads rows that arrived since the last scan.
 # ---------------------------------------------------------------------------
 _daily_usage = {"day": "", "totals": None, "credits": None, "models": None,
-                "offset": 0, "at": 0.0}
+                "key_credits": None, "offset": 0, "at": 0.0}
 _daily_usage_lock = threading.Lock()
 
 
@@ -1878,6 +1878,7 @@ def _daily_state_copy(source):
         "tokens": dict(source.get("totals") or {}),
         "credits": dict(source.get("credits") or {}),
         "models": {k: dict(v) for k, v in (source.get("models") or {}).items()},
+        "key_credits": dict(source.get("key_credits") or {}),
     }
 
 
@@ -1889,6 +1890,7 @@ def _scan_daily_usage(offset, state):
     this read raced the writer.
     """
     midnight = _local_midnight()
+    state.setdefault("key_credits", {})
     with open(USAGE_LOG, encoding="utf-8") as fh:
         fh.seek(offset)
         while True:
@@ -1912,12 +1914,16 @@ def _scan_daily_usage(offset, state):
             # consumed request, and its token counts are incomplete.
             if row_outcome(row) == "client_aborted":
                 continue
+            k_id = row.get("key")
+            credit = row.get("credit") or 0
+            if k_id and credit:
+                state["key_credits"][k_id] = round(
+                    state["key_credits"].get(k_id, 0.0) + float(credit), 4)
             uid = row.get("account")
             if not uid:
                 continue
             tokens = row.get("total_tokens") or 0
             state["tokens"][uid] = state["tokens"].get(uid, 0) + tokens
-            credit = row.get("credit") or 0
             if credit:
                 state["credits"][uid] = state["credits"].get(uid, 0.0) + credit
             mid = row.get("model")
@@ -1947,14 +1953,14 @@ def daily_usage_stats(ttl=None):
         if c["day"] == day and c["totals"] is not None:
             state = _daily_state_copy(c)
         else:
-            state = {"tokens": {}, "credits": {}, "models": {}}
+            state = {"tokens": {}, "credits": {}, "models": {}, "key_credits": {}}
         offset = int(c["offset"] or 0)
         try:
             size = os.path.getsize(USAGE_LOG)
         except OSError:
             size = 0
         if offset > size:
-            state = {"tokens": {}, "credits": {}, "models": {}}
+            state = {"tokens": {}, "credits": {}, "models": {}, "key_credits": {}}
             offset = 0
         try:
             state, offset = _scan_daily_usage(offset, state)
@@ -1965,9 +1971,26 @@ def daily_usage_stats(ttl=None):
             return None
         _daily_usage.update({"day": day, "totals": state["tokens"],
                              "credits": state["credits"],
-                             "models": state["models"], "offset": offset,
+                             "models": state["models"],
+                             "key_credits": state["key_credits"],
+                             "offset": offset,
                              "at": time.time()})
         return _daily_state_copy(_daily_usage)
+
+
+def daily_key_credits(ttl=None):
+    """key_id -> credit spent counted since local midnight."""
+    stats = daily_usage_stats(ttl=ttl)
+    if stats is None:
+        return {}
+    return stats.get("key_credits") or {}
+
+
+def key_daily_credit_spent(key_id, ttl=None):
+    """How many credits `key_id` spent today since local midnight."""
+    if not key_id:
+        return 0.0
+    return float(daily_key_credits(ttl=ttl).get(str(key_id), 0.0) or 0.0)
 
 
 def daily_tokens_by_account(ttl=None):
@@ -3313,6 +3336,16 @@ def free_models_by_realm():
         out[realm] = free
     _free_models_cache.update({"at": now, "data": out})
     return out
+
+
+def is_model_free(model, realm=None):
+    """True when the catalogue marks `model` as free ("x0.00")."""
+    if not model:
+        return False
+    free = free_models_by_realm()
+    if realm:
+        return model in free.get(realm, ())
+    return model in free.get("intl", ()) or model in free.get("cn", ())
 
 
 def _usage_snapshot_scope(realm, range, since, until):
@@ -10153,14 +10186,19 @@ def runtime_settings_view():
     else:
         masked = "*" * len(key)
     keys = []
+    key_credits = daily_key_credits()
     for entry in configured_keys():
         raw = entry.get("key") or ""
+        k_id = entry.get("id") or ""
         keys.append({
-            "id": entry.get("id") or "",
+            "id": k_id,
             "name": entry.get("name") or "",
             "realm": entry.get("realm") or "",
             "models": list(entry.get("models") or []),
             "accounts": list(entry.get("accounts") or []),
+            "concurrency_limit": entry.get("concurrency_limit") or 0,
+            "daily_credit_limit": entry.get("daily_credit_limit") or 0,
+            "daily_credits_today": round(key_credits.get(k_id, 0.0), 2),
             "enabled": entry.get("enabled", True) is not False,
             "masked": (raw[:4] + "*" * 6 + raw[-4:]) if len(raw) > 8 else "*" * len(raw),
             "source": entry.get("source") or "panel",
@@ -18825,6 +18863,37 @@ class Handler(BaseHTTPRequestHandler):
                 "请在看板「设置」页修改这个 Key 的允许账号，或改用允许该账号的 Key。"
                 % ((entry or {}).get("name") or "未命名", account.uid))
 
+    def _key_daily_credit_error(self, model=None):
+        """Reject request if this API key reached its daily credit limit.
+
+        Free models (costing 0 credits) stay available even after the cap is
+        reached, matching the account-level daily credit guard behavior.
+        """
+        entry = getattr(self, "key_entry", None)
+        if not entry or not isinstance(entry, dict):
+            return ""
+        try:
+            limit = float(entry.get("daily_credit_limit") or 0)
+        except (TypeError, ValueError):
+            limit = 0.0
+        if limit <= 0:
+            return ""
+        req_realm = self._request_realm() or CURRENT_REALM
+        if model and is_model_free(model, req_realm):
+            return ""
+        k_id = entry.get("id")
+        if not k_id:
+            return ""
+        spent = key_daily_credit_spent(k_id)
+        if spent >= limit:
+            name = entry.get("name") or k_id
+            return (
+                "Rate limit reached: API key '%s' reached its daily credit limit "
+                "(spent %.2f / limit %.2f credits today); resets at midnight"
+                % (name, spent, limit)
+            )
+        return ""
+
     def _request_realm(self, explicit=None):
         """Pick the upstream exit for this request.
         Priority: an explicit ?realm= argument, then the realm bound to the
@@ -19827,6 +19896,10 @@ class Handler(BaseHTTPRequestHandler):
                     concurrency_limit = item.get("concurrency_limit")
                 else:
                     concurrency_limit = stored.get("concurrency_limit")
+                if "daily_credit_limit" in item:
+                    daily_credit_limit = item.get("daily_credit_limit")
+                else:
+                    daily_credit_limit = stored.get("daily_credit_limit")
                 created_at = item.get("created_at") or (stored.get("created_at") if entry_id in existing else None) or time.strftime("%Y/%m/%d %H:%M")
                 cleaned.append({
                     "id": entry_id,
@@ -19836,6 +19909,7 @@ class Handler(BaseHTTPRequestHandler):
                     "models": models,
                     "accounts": accounts,
                     "concurrency_limit": concurrency_limit,
+                    "daily_credit_limit": daily_credit_limit,
                     "enabled": enabled,
                     "created_at": created_at,
                 })
@@ -22535,6 +22609,15 @@ class Handler(BaseHTTPRequestHandler):
             aliases = {}
         _apply_model_aliases(payload, aliases)
         _apply_background_model_alias(payload)
+        # Check per-key daily credit limit
+        if not path.endswith("/count_tokens"):
+            credit_err = self._key_daily_credit_error(payload.get("model"))
+            if credit_err:
+                record_error(payload.get("model") or "unknown", 429, credit_err,
+                             stream=payload.get("stream"), key=self._key_id())
+                if is_messages_route:
+                    return self._anthropic_error(429, credit_err, "rate_limit_error")
+                return self._error(429, credit_err, "rate_limit_error")
         # Check per-key concurrency limit (#359)
         key_ok, cur_key_conc, max_key_conc = _acquire_key_slot(self.key_entry)
         if not key_ok:
