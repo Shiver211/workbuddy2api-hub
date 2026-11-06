@@ -22,20 +22,12 @@ const PANEL_REMEMBER_KEY = 'wb-proxy-panel-remember';
   try { panelToken = panelToken || localStorage.getItem(PANEL_STORE) || ''; } catch(e){}
   if(panelToken) document.documentElement.classList.add('wb-panel-session');
 })();
-/* 新导航使用显式 URL 参数启用，默认保留用户现有布局。 */
+/* 普通入口默认新导航；只有显式 URL 参数才进入传统布局。 */
 (function(){
   var next = true;
   try {
     var p = new URLSearchParams(location.search).get('ui');
-    var pref = '';
-    try { pref = localStorage.getItem('wb-ui-mode') || ''; } catch(e){}
-    if(p === 'classic' || p === 'legacy' || p === '0'){
-      next = false;
-    } else if(p === 'next' || p === '1'){
-      next = true;
-    } else if(pref === 'classic' || pref === '0'){
-      next = false;
-    }
+    next = p !== 'classic' && p !== 'legacy' && p !== '0';
   } catch(e){}
   if(typeof window !== 'undefined') window.__NEXT_UI__ = next;
   if(next && typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('data-ui', 'next');
@@ -14411,14 +14403,12 @@ async function saveAccountsSeparateTab(btn){
 }
 // ==== 账号页签模式结束 ====
 
-// Layout and color theme are independent; use the console layout by default.
+// 导航布局通过 URL 切换；普通入口默认新导航，配色主题独立保存。
 function toggleNextLayout(){
   const url = new URL(window.location.href);
   if(window.__NEXT_UI__){
-    try { localStorage.setItem('wb-ui-mode', 'classic'); } catch(e){}
     url.searchParams.set('ui', 'classic');
   } else {
-    try { localStorage.removeItem('wb-ui-mode'); } catch(e){}
     url.searchParams.delete('ui');
   }
   url.searchParams.delete('tab');
