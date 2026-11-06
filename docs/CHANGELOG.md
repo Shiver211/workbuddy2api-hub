@@ -1,3 +1,9 @@
+## v2.0.1
+
+- **仅保留 Windows**：移除 Docker、Linux、macOS 与 OpenWrt 的部署、启动脚本和发布流程；测试矩阵收敛为 Windows Python 3.9 / 3.12。
+- **移除内置 Python**：Windows ZIP 不再下载或打包 Python 运行时。启动脚本使用已安装的 Python 3.9+ 或项目虚拟环境，更新器同步取消包内 Python 的要求。
+- **新导航默认启用**：普通入口始终使用新导航，忽略历史 `wb-ui-mode` 缓存。主题菜单通过 URL 切换布局，仍支持 `?ui=classic`、`?ui=legacy` 和 `?ui=0` 进入传统布局。
+
 ## v2.0.0
 
 **项目停止维护（2026-11-06）**：后续不再更新代码、不跟进上游变化、不再处理新的 issue / PR。感谢大家的 star。
