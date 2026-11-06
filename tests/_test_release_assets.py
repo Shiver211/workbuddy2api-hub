@@ -1,25 +1,4 @@
-"""Release assets are built from an explicit list, not from the checkout.
-
-Issue #28 turns a `v*` tag into a portable ZIP, two OpenWrt packages and a
-SHA256SUMS file, and hands #29 an explicit list of the files a release owns.
-These assertions pin that contract locally, so a release cannot ship a ZIP that
-silently picked up whatever happened to be in the working tree (or dropped a
-newly added wb_*.py module), and the maintainer's release notes cannot be
-overwritten by the generated download block.
-
-Two of them exist because a review round found the release doing the wrong
-thing:
-
-  * the portable asset has to be the green package - the trimmed CPython the
-    launchers start as `python\\python.exe` - not a source-only archive that
-    happens to share the name;
-  * nothing may write a Draft Release on the strength of a reduced test run:
-    every release mutation needs the whole matrix, and the legs are read from
-    tests.yml so a leg dropped there cannot silently weaken the gate.
-
-Run with: python tests/_test_release_assets.py
-"""
-import ast
+"""Windows 应用发布包：显式文件清单、可复现归档、校验和及草稿发布门禁。"""
 import glob
 import hashlib
 import os
@@ -33,16 +12,13 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "release"))
 
 import matrix_legs  # noqa: E402
-import portable_runtime  # noqa: E402
 import release_tools as tools  # noqa: E402
 
 # The legs the repository has to keep running for a release today. The gate
 # reads them from tests.yml rather than from this tuple - this is the
 # expectation the reader checks that derivation against.
 EXPECTED_LEGS = (
-    # Pinned because ubuntu-latest moved to 26.04, which has no 3.9 build.
-    "ubuntu-24.04 / python 3.9",
-    "ubuntu-latest / python 3.12",
+    "windows-latest / python 3.9",
     "windows-latest / python 3.12",
 )
 
@@ -52,14 +28,6 @@ def read(*parts):
         return fh.read()
 
 
-def make_runtime(directory, extra=()):
-    """A stand-in runtime that satisfies portable_runtime.verify()."""
-    for rel in list(portable_runtime.REQUIRED_FILES) + list(extra):
-        path = os.path.join(directory, *rel.split("/"))
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            fh.write(b"stub:" + rel.encode("utf-8"))
-    return directory
 
 
 # ---- "only a tag push may write a release" --------------------------------
@@ -248,8 +216,7 @@ class ManifestTests(unittest.TestCase):
     def test_launchers_and_dashboard_are_listed(self):
         listed = tools.read_manifest()
         for name in ("dashboard.html", "console_tail.py", "wb_proxy.py", "README.md", "LICENSE",
-                     "start-wb-proxy.bat", "start-wb-proxy.sh",
-                     "start-wb-proxy.command", "start-wb-proxy-lan.sh"):
+                     "start-wb-proxy.bat", "start-wb-proxy-lan.bat"):
             self.assertIn(name, listed)
 
     def test_every_launcher_script_is_listed(self):
@@ -257,14 +224,13 @@ class ManifestTests(unittest.TestCase):
 
         #285 的教训：portable.txt 里 start-wb-proxy-lan.bat 被 restart-wb-proxy.bat
         顶掉了，而新脚本恰恰要调用它——便携包少了这个文件，Windows 的 LAN 启动与
-        重启都会失败。上面那份手写清单只点了 .sh 的名，所以没拦住。
-        quick-deploy.sh 是 Docker 路径、刻意不进便携包，不在前缀里。
+        重启都会失败，因此按前缀检查所有 Windows 启动入口。
         """
         listed = tools.read_manifest()
         for prefix in ("start-wb-proxy", "restart-wb-proxy", "allow-firewall"):
             for path in sorted(glob.glob(os.path.join(ROOT, prefix + "*"))):
                 name = os.path.basename(path)
-                if name.endswith((".bat", ".sh", ".command")):
+                if name.endswith(".bat"):
                     self.assertIn(name, listed, "便携包清单缺少 %s" % name)
 
     def test_runtime_data_files_are_listed(self):
@@ -293,8 +259,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_development_only_files_stay_out(self):
         listed = tools.read_manifest()
-        for name in ("Dockerfile", "docker-compose.yml", "quick-deploy.sh",
-                     "tests/run_all.py"):
+        for name in ("tests/run_all.py", "release/release_tools.py"):
             self.assertNotIn(name, listed)
 
 
@@ -318,72 +283,6 @@ class VisibleLauncherTests(unittest.TestCase):
             self.assertGreater(pythonw, mode, name)
 
 
-class RuntimeTrimTests(unittest.TestCase):
-    """The trim rules reproduce the runtime the existing package ships."""
-
-    def test_the_app_modules_survive_the_trim(self):
-        # Every stdlib module the gateway imports has to be in the contract
-        # list, or the trim could drop the thing it depends on.
-        imported = set()
-        for path in glob.glob(os.path.join(ROOT, "wb_*.py")):
-            with open(path, encoding="utf-8") as fh:
-                tree = ast.parse(fh.read())
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    imported.update(a.name.split(".")[0] for a in node.names)
-                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-                    imported.add(node.module.split(".")[0])
-        local = {os.path.basename(p)[:-3] for p in glob.glob(os.path.join(ROOT, "wb_*.py"))}
-        # sys / time and friends are compiled into python312.dll, so the trim
-        # cannot remove them and they have no Lib/ file to check.
-        # Windows built-in C modules (msvcrt / nt / winreg) are compiled into
-        # python312.dll on Windows and have no Lib/ file; exclude them when running on POSIX.
-        windows_builtins = ("msvcrt", "nt", "winreg", "math")
-        needed = sorted(m for m in imported
-                        if m not in local and m not in sys.builtin_module_names and m not in windows_builtins)
-        self.assertTrue(needed)
-        covered = set(portable_runtime.REQUIRED_FILES)
-        missing = [m for m in needed
-                   if ("Lib/%s.py" % m) not in covered and ("Lib/%s/__init__.py" % m) not in covered]
-        self.assertEqual(missing, [], "这些导入没有出现在运行时常量表里：%s" % missing)
-
-    def test_the_documented_trim_is_exactly_what_goes(self):
-        for rel in ("Lib/multiprocessing", "Lib/tkinter/__init__.py", "Lib/idlelib/idle.py",
-                    "Lib/site-packages/pip/__init__.py", "Lib/venv/__init__.py",
-                    "Scripts/pip.exe", "include/Python.h", "libs/python312.lib",
-                    "tcl/tk8.6/init.tcl", "python312.pdb",
-                    "DLLs/_tkinter.pyd", "DLLs/tcl86t.dll", "DLLs/tk86t.dll",
-                    "DLLs/zlib1.dll", "DLLs/_testcapi.pyd", "Lib/__pycache__/os.cpython-312.pyc"):
-            self.assertFalse(portable_runtime.keep(rel), "%s 应该被裁掉" % rel)
-
-    def test_what_the_launchers_need_survives(self):
-        for rel in ("python.exe", "pythonw.exe", "python3.dll", "python312.dll", "vcruntime140.dll",
-                    "LICENSE.txt", "Lib/os.py", "Lib/ssl.py", "Lib/sqlite3/__init__.py",
-                    "DLLs/_socket.pyd", "DLLs/_ssl.pyd", "DLLs/libssl-3-x64.dll",
-                    "DLLs/_ctypes.pyd", "DLLs/libffi-8.dll"):
-            self.assertTrue(portable_runtime.keep(rel), "%s 不能被裁掉" % rel)
-
-    def test_verify_rejects_a_runtime_that_cannot_start_the_gateway(self):
-        with tempfile.TemporaryDirectory(prefix="relrt-") as directory:
-            make_runtime(directory)
-            portable_runtime.verify(directory)          # the fixture is valid
-
-            os.remove(os.path.join(directory, "python.exe"))
-            with self.assertRaises(SystemExit):
-                portable_runtime.verify(directory)
-
-    def test_verify_rejects_trimmed_files_coming_back(self):
-        with tempfile.TemporaryDirectory(prefix="relrt-") as directory:
-            make_runtime(directory)
-            os.makedirs(os.path.join(directory, "Lib", "multiprocessing"))
-            with self.assertRaises(SystemExit):
-                portable_runtime.verify(directory)
-
-    def test_verify_rejects_stray_debug_symbols(self):
-        with tempfile.TemporaryDirectory(prefix="relrt-") as directory:
-            make_runtime(directory, extra=["DLLs/_socket.pdb"])
-            with self.assertRaises(SystemExit):
-                portable_runtime.verify(directory)
 
 
 class PortableZipTests(unittest.TestCase):
@@ -393,13 +292,12 @@ class PortableZipTests(unittest.TestCase):
     VERSION = tools.source_version(ROOT)
     TAG = "v" + VERSION
 
-    def build(self, directory, name="out.zip", runtime=None, **kwargs):
-        runtime = runtime or make_runtime(os.path.join(directory, "python"))
+    def build(self, directory, name="out.zip", **kwargs):
         return tools.build_portable(self.VERSION, self.TAG,
                                     os.path.join(directory, name),
-                                    source=ROOT, runtime_dir=runtime, **kwargs)
+                                    source=ROOT, **kwargs)
 
-    def test_archive_holds_the_manifest_the_runtime_and_the_marker(self):
+    def test_archive_holds_only_manifest_files_and_marker(self):
         with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
             path, files = self.build(directory)
             with zipfile.ZipFile(path) as zf:
@@ -408,39 +306,17 @@ class PortableZipTests(unittest.TestCase):
             self.assertEqual(sorted(n for n in names if not n.startswith(root + "/")),
                              [tools.MANIFEST_NAME])
             self.assertEqual(sorted(n[len(root) + 1:] for n in names if n.startswith(root + "/")
-                                    and not n.startswith(root + "/python/")),
+                                   ),
                              sorted(files))
-            self.assertIn("%s/python/python.exe" % root, names)
-            self.assertIn("%s/python/Lib/os.py" % root, names)
 
-    def test_the_archive_is_not_a_source_archive(self):
-        # The whole point of the round-1 fix: a ZIP without the runtime is a
-        # different, much less useful asset, so the builder must not produce it.
+    def test_the_archive_does_not_bundle_python(self):
         with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
             path, _ = self.build(directory)
-            runtime_files = [n for n in zipfile.ZipFile(path).namelist()
-                             if n.endswith("python/python.exe")]
-            self.assertEqual(len(runtime_files), 1)
+            with zipfile.ZipFile(path) as zf:
+                self.assertFalse(any(name.startswith(tools.PACKAGE_ROOT + "/python/")
+                                     for name in zf.namelist()))
 
-    def test_a_missing_runtime_is_refused(self):
-        with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
-            with self.assertRaises(SystemExit):
-                tools.build_portable(self.VERSION, self.TAG,
-                                     os.path.join(directory, "x.zip"), source=ROOT,
-                                     runtime_dir=None)
-            with self.assertRaises(SystemExit):
-                tools.build_portable(self.VERSION, self.TAG,
-                                     os.path.join(directory, "x.zip"), source=ROOT,
-                                     runtime_dir=os.path.join(directory, "nope"))
 
-    def test_a_runtime_that_fails_the_contract_is_refused(self):
-        with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
-            bad = make_runtime(os.path.join(directory, "bad"))
-            os.remove(os.path.join(bad, "python.exe"))
-            with self.assertRaises(SystemExit):
-                tools.build_portable(self.VERSION, self.TAG,
-                                     os.path.join(directory, "x.zip"), source=ROOT,
-                                     runtime_dir=bad)
 
     def test_embedded_manifest_describes_the_release(self):
         import json
@@ -453,13 +329,8 @@ class PortableZipTests(unittest.TestCase):
             self.assertEqual(manifest["root"], tools.PACKAGE_ROOT)
             self.assertEqual(manifest["version"], tools.source_version(ROOT))
             self.assertEqual(manifest["tag"], self.TAG)
-            # #29 replaces the runtime as one subtree, so the manifest has to
-            # name it instead of leaving it implicit.
-            self.assertEqual(manifest["runtime"]["prefix"], "python/")
-            self.assertEqual(manifest["runtime"]["python"], portable_runtime.RUNTIME_VERSION)
-            self.assertGreater(manifest["runtime"]["files"], 0)
-            # #573: an image / rootfs deployment only owns the app layer; the
-            # launchers and the bundled pricing snapshot are portable-only.
+            self.assertNotIn("runtime", manifest)
+            # 自定义 Windows 安装可只替换应用层。
             app = manifest["profiles"]["app"]
             self.assertIn("wb_proxy.py", app)
             self.assertIn("dashboard.html", app)
@@ -467,13 +338,13 @@ class PortableZipTests(unittest.TestCase):
             self.assertNotIn("start-wb-proxy.bat", app)
             self.assertTrue(set(app) <= set(files))
 
-    def test_the_launchers_look_where_the_runtime_is(self):
-        # The packaged path and the path the launcher probes have to agree, or
-        # the green package silently falls back to a system interpreter.
-        bat = read("start-wb-proxy.bat")
-        self.assertIn("python\\python.exe", bat)
-        sh = read("start-wb-proxy.sh")
-        self.assertIn("python/bin/python3", sh)
+    def test_launchers_use_installed_python(self):
+        for name in ("start-wb-proxy.bat", "start-wb-proxy-lan.bat"):
+            bat = read(name)
+            self.assertIn('set "VIEWERPY=python"', bat)
+            self.assertIn('set "VIEWERPY=py"', bat)
+            self.assertNotIn("bundled", bat)
+            self.assertIn("Install Python 3.9+", bat)
 
     def test_archive_paths_are_safe(self):
         with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
@@ -485,27 +356,22 @@ class PortableZipTests(unittest.TestCase):
 
     def test_rebuild_is_byte_identical(self):
         with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
-            runtime = make_runtime(os.path.join(directory, "python"))
-            first, _ = self.build(directory, "a.zip", runtime=runtime)
-            second, _ = self.build(directory, "b.zip", runtime=runtime)
+            first, _ = self.build(directory, "a.zip")
+            second, _ = self.build(directory, "b.zip")
             with open(first, "rb") as fa, open(second, "rb") as fb:
                 self.assertEqual(fa.read(), fb.read())
 
     def test_version_mismatch_is_refused(self):
         with tempfile.TemporaryDirectory(prefix="relzip-") as directory:
-            runtime = make_runtime(os.path.join(directory, "python"))
             with self.assertRaises(SystemExit):
                 tools.build_portable("9.9.9", "v9.9.9",
-                                     os.path.join(directory, "x.zip"), source=ROOT,
-                                     runtime_dir=runtime)
+                                     os.path.join(directory, "x.zip"), source=ROOT)
 
 
 class ChecksumTests(unittest.TestCase):
     def test_covers_every_asset_once_in_sha256sum_format(self):
         with tempfile.TemporaryDirectory(prefix="relsum-") as directory:
-            names = ["workbuddy2api-hub-v1.6.17.zip",
-                     "workbuddy2api_1.6.17-1_all.ipk",
-                     "workbuddy2api-1.6.17-r1.apk"]
+            names = ["workbuddy2api-hub-v1.6.17.zip",]
             assets = []
             for i, name in enumerate(names):
                 p = os.path.join(directory, name)
@@ -537,15 +403,13 @@ class ReleaseBodyTests(unittest.TestCase):
     block = None
 
     def setUp(self):
-        names = tools.asset_names("1.6.17", "1")
+        names = tools.asset_names("1.6.17")
         self.block = tools.download_block("1.6.17", *names)
 
     def test_first_compose_has_the_marker_and_the_fixed_block(self):
         body = tools.compose_body("", self.block)
         self.assertIn(tools.MARKER, body)
-        for expected in ("## 下载说明", "workbuddy2api-hub-v1.6.17.zip",
-                         "workbuddy2api_1.6.17-1_all.ipk",
-                         "workbuddy2api-1.6.17-r1.apk", "SHA256SUMS"):
+        for expected in ("## 下载说明", "workbuddy2api-hub-v1.6.17.zip", "SHA256SUMS"):
             self.assertIn(expected, body)
 
     def test_maintainer_notes_above_the_marker_survive(self):
@@ -564,7 +428,7 @@ class ReleaseBodyTests(unittest.TestCase):
 class MatrixLegsTests(unittest.TestCase):
     """The release gate names every leg instead of trusting a summary."""
 
-    def test_the_repository_matrix_is_the_expected_three(self):
+    def test_the_repository_matrix_is_the_expected_two(self):
         self.assertEqual(tuple(matrix_legs.legs()), EXPECTED_LEGS)
 
     def test_dropping_a_leg_narrows_what_the_gate_requires(self):
@@ -574,7 +438,7 @@ class MatrixLegsTests(unittest.TestCase):
         text = read(".github", "workflows", "tests.yml")
         without = text.replace('          - os: windows-latest\n            python: "3.12"\n', "")
         self.assertNotEqual(without, text, "tests.yml 里没有找到预期的 windows 腿")
-        self.assertEqual(tuple(matrix_legs.legs(without)), EXPECTED_LEGS[:2])
+        self.assertEqual(tuple(matrix_legs.legs(without)), EXPECTED_LEGS[:1])
 
     def test_an_unparseable_matrix_yields_nothing(self):
         # Empty means "the gate must refuse", never "no legs to check".
@@ -587,7 +451,7 @@ class ReleaseToolingTests(unittest.TestCase):
         # line aborted the first rehearsal of this workflow - the repository
         # already paid for the same lesson in tests/run_all.py. Both tools pin
         # their own streams instead of trusting the console.
-        for name in ("portable_runtime.py", "release_tools.py"):
+        for name in ("release_tools.py",):
             text = read("release", name)
             self.assertIn('reconfigure(encoding="utf-8"', text, name)
 
@@ -681,29 +545,23 @@ class ReleaseWorkflowTests(unittest.TestCase):
 
     def test_tag_must_match_the_source_version(self):
         # The gate reads both source strings, compares the tag against them and
-        # cross-checks the OpenWrt Makefile, so a tag cannot ship a package
-        # whose version disagrees with the code inside it.
+        # ensures the package version agrees with its source.
         self.assertIn("github.ref_name", self.text)
         self.assertIn("server_version", self.text)
         self.assertIn('"version"', self.text)
         self.assertIn("TAGVER", self.text)
-        self.assertIn("wrt/openwrt/workbuddy2api/Makefile", self.text)
 
     def test_uses_the_manifest_tooling(self):
         self.assertIn("release/release_tools.py", self.text)
         self.assertIn("SHA256SUMS", self.text)
 
-    def test_the_portable_asset_is_built_and_booted_on_windows(self):
-        # A Linux job can only assemble a source archive; the green package has
-        # to be produced where its own runtime can be executed.
-        portable = self.text.split("  portable:", 1)[1].split("\n  openwrt:", 1)[0]
+    def test_the_application_is_built_and_booted_on_windows(self):
+        portable = self.text.split("  portable:", 1)[1].split("\n  draft-preview:", 1)[0]
         self.assertIn("runs-on: windows-latest", portable)
-        self.assertIn("release/portable_runtime.py", portable)
-        self.assertIn("--runtime python", portable)
-        self.assertIn("python\\python.exe", portable)
+        self.assertIn("(Get-Command python).Source", portable)
         self.assertIn("/health", portable)
-        self.assertIn("RUNTIME_SHA256", portable)
         self.assertIn("release-manifest.json", portable)
+        self.assertNotIn("--runtime", portable)
 
     def test_every_release_writer_needs_the_full_matrix(self):
         # The gate derives the legs from tests.yml and checks each one by name.
@@ -848,48 +706,22 @@ class ReleaseWorkflowTests(unittest.TestCase):
         block = self.text.split(marker, 1)[1].split("run:", 1)[0]
         self.assertIn("steps.decide.outputs.writes != 'true'", block)
 
-    def test_the_apk_metadata_is_checked_against_the_tag(self):
-        # "non-empty and metadata/version agree with the tag" is an explicit
-        # acceptance criterion, so the workflow proves it with the SDK's own
-        # apk rather than trusting a file name.
-        self.assertIn("adbdump", self.text)
-        self.assertIn("apk-dump.txt", self.text)
-        self.assertIn("python3-light", self.text)
 
-    def test_packages_are_staged_flat_before_upload(self):
-        # The rehearsal caught this: download-artifact with merge-multiple
-        # rebuilds the tree relative to the upload root, so uploading
-        # wrt/ipk/*.ipk and wrt/apk/*.apk in one artifact delivered them as
-        # dist/ipk/ and dist/apk/ - the checksum step's dist/*.apk glob then
-        # matched nothing and the release job died on a FileNotFoundError.
-        # Every artifact is uploaded from one flat directory instead.
-        self.assertIn("merge-multiple: true", self.text)
-        self.assertIn("cp wrt/ipk/*.ipk wrt/apk/*.apk dist/", self.text)
-        for line in self.text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("wrt/") and (".ipk" in stripped or ".apk" in stripped):
-                self.fail("上传路径不能直接指向 wrt/：%s" % stripped)
 
 
     def test_portable_scripts_have_lf_and_executable_mode(self):
         # Issue #329: 检查便携包内脚本换行与执行权限
-        # *.sh 与 *.command 必须为 LF 且带有 0o755 执行权限；*.bat 必须为 CRLF
+        # Windows 批处理必须为 CRLF；Python 源码必须为 LF。
         crlf = bytes([13, 10])
         with tempfile.TemporaryDirectory(prefix="wb-test-eol-") as tmp:
-            rt = os.path.join(tmp, "python")
-            make_runtime(rt)
             out_zip = os.path.join(tmp, "out.zip")
             ver = tools.source_version(ROOT)
-            tools.build_portable(ver, "v" + ver, out_zip, source=ROOT, runtime_dir=rt)
+            tools.build_portable(ver, "v" + ver, out_zip, source=ROOT)
             with zipfile.ZipFile(out_zip, "r") as zf:
                 for info in zf.infolist():
                     name_lower = info.filename.lower()
                     mode = (info.external_attr >> 16) & 0o777
-                    if name_lower.endswith((".sh", ".command")):
-                        content = zf.read(info)
-                        self.assertNotIn(crlf, content, f"{info.filename} 包含 CRLF 换行符")
-                        self.assertEqual(mode, 0o755, f"{info.filename} 权限不是 0o755 (got {oct(mode)})")
-                    elif name_lower.endswith(".bat"):
+                    if name_lower.endswith(".bat"):
                         content = zf.read(info)
                         self.assertIn(crlf, content, f"{info.filename} 必须包含 CRLF 换行符")
                         self.assertEqual(mode, 0o755, f"{info.filename} 权限不是 0o755")

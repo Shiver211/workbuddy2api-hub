@@ -10169,7 +10169,7 @@ const GETJSON_INFLIGHT = new Map();
 const GETJSON_STALE_MS = 60000;
 // ---- 顶栏：运行日志窗口 + 关闭服务 ------------------------------------
 // 「眼睛」按钮在新窗口打开运行日志页：服务端不 spawn 任何进程，Windows /
-// macOS / 容器走同一条路（#427）。关闭服务不能凭一次 postJSON 的成败就宣布
+// 浏览器统一打开日志页（#427）。关闭服务不能凭一次 postJSON 的成败就宣布
 // 成功——容器或守护进程可能把进程重新拉起，所以要用 /health 复核（#426）。
 let GATEWAY_DOWN = false;
 
@@ -12726,8 +12726,7 @@ async function recoverAtrestKey(btn){
   }
 }
 
-/* 手工导入解码密钥：macOS / Linux 上回收不了客户端进程内存（huntSupported
-   为 false），用户可以把保护密钥贴进来。后端会用 keyblob 自检，贴错直接报错。 */
+/* 手工导入解码密钥：自动回收失败时，用户可以把保护密钥贴进来。后端会用 keyblob 自检，贴错直接报错。 */
 async function adoptAtrestKey(btn){
   const input = document.getElementById('adoptKeyInput');
   const value = (input && input.value || '').trim();
@@ -16410,7 +16409,7 @@ async function saveLogDb(btn){
 
 /* ---- 更新检查与手动安装 ----
    浏览器只请求本机面板接口，不直接下载更新包或访问 GitHub。安装状态由
-   root-owned systemd 更新服务回报；自动检查开关永远不会自动安装。 */
+   Windows 更新执行器回报；自动检查开关永远不会自动安装。 */
 
 /* 200 不等于成功：后端把「检查根本没跑起来」（ok=false）和「这一次查询失败」
    （last_error 非空）都放在 200 的响应体里回来。两处都要看，否则按钮会对着
@@ -17839,8 +17838,8 @@ async function autoAssignSlots(){
   toast('已为 ' + unbound.length + ' 个未绑定账号分配代理出口', 'ok');
 }
 
-/* 智能体配置只在「浏览器和网关进程同一台机器」时成立（issue #246）：服务端 /
-   Docker / OpenWrt 部署下看板是远程打开的，一键配置改的是容器或路由器里的
+/* 智能体配置只在「浏览器和网关进程同一台机器」时成立（issue #246）：远程访问时，
+   一键配置改的是网关机器里的
    配置目录，到不了用户自己的电脑。服务端据此回 enabled:false，这里把入口整个
    撤掉；判定失败（网络抖动等）保持可见——本机用户不该因此丢掉这个入口。 */
 let AGENTS_AVAILABLE = true;

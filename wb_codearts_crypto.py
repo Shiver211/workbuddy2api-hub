@@ -5,7 +5,7 @@
 - PKCE：OAuth authorization_code
 - 华为云 SDK-HMAC-SHA256 请求签名（AK/SK + 可选 STS security token）
 
-为什么自己写 P-256：便携运行时只有标准库，不能依赖 `cryptography`。曲线参数
+为什么自己写 P-256：项目仅使用标准库，不能依赖 `cryptography`。曲线参数
 与签名格式（JOSE raw r||s、低 S 归一化）和 codearts2api 的 Go 实现逐项对齐；
 `tests/_test_codearts_crypto.py` 里有 Go 侧生成的对照向量。
 """

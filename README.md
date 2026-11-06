@@ -1,25 +1,5 @@
 # WorkBuddy2API-Hub — 国际版、国内版多账号网关中枢
 
-> [!CAUTION]
-> **项目停止维护（2026-11-06）**：后续不再更新代码、不跟进上游变化、不再处理新的 issue / PR。感谢大家的 star。
-
-> [!IMPORTANT]
-> **项目进入低频维护（2026-10-23） / Low-frequency maintenance**
->
-> 大幅降低更新频率与 Issue / PR 处理速度。请先阅读风险说明，再决定是否继续使用。
->
-> Updates and responses to issues / pull requests will be significantly reduced. Read the risk notice below before continuing.
-
-> [!WARNING]
-> **WorkBuddy 上游正在收紧对非官方客户端的识别与拦截。**
->
-> - **封禁**：2026-10-23 下午起，非官方客户端的识别与拦截明显收紧。
-> - **维护者**：近期工作压力增大，无法保证及时更新与响应。
-> - **可用性**：上游可能随时进一步收紧，导致本项目不可用。
-> - **账号风险**：使用非官方客户端造成的风控、限流或封禁，由使用者自行承担。
->
-> **Upstream enforcement** tightened detection and blocking of unofficial clients from the afternoon of 2026-10-23. The maintainer is under increased workload and cannot guarantee timely updates or replies. The upstream may tighten further at any time; rate limits, account restrictions or bans caused by using an unofficial client are the user's responsibility.
-
 本项目仅用于协议学习、研究与个人自用。请优先使用官方客户端，不要使用主账号，不要共享账号，也不要用于商业转售。
 
 This project is for protocol research and personal use only. Prefer the official client, do not use your primary account, and do not resell or share access.
@@ -36,7 +16,7 @@ This project is for protocol research and personal use only. Prefer the official
 ## 核心特性
 
 - **标准 API 兼容**：将 WorkBuddy（国际版/国内版）与 CodeArts 封装为标准 OpenAI 格式（Chat Completions / Responses），无缝支持 Codex、Claude Code、NextChat 等各类客户端。
-- **开箱即用与多端部署**：便携版免装环境（Windows 自带精简运行时），支持 Docker、NAS（群晖/飞牛）一键部署及 OpenWrt 路由器固件。
+- **Windows 原生运行**：使用已安装的 Python 3.9+，支持本机运行与局域网共享。
 - **多账号池与出口隔离**：支持浏览器 OAuth 快速导入、每账号独立出口代理槽绑定、设备指纹隔离、自动故障转移与配额轮转。
 - **自动化福利与签到**：内置国内版全套成长任务、加油站签到与猫猫旅行，支持国际版每日活跃会话与 CodeArts 自动签到。
 - **可视化管理看板**：提供 Web 仪表盘，支持实时请求日志、Token/积分透视、多 API Key 权限分发（模型/账号白名单）与额度护栏。
@@ -67,66 +47,29 @@ This project is for protocol research and personal use only. Prefer the official
 
 ### 1. 本机运行
 
+先安装 [Python 3.9+](https://www.python.org/downloads/windows/)，安装时勾选「Add python.exe to PATH」。发布包不附带 Python 运行时。
+
 - **Windows**：双击 `start-wb-proxy.bat`（静默后台运行 + 独立日志窗口）；如需前台控制台窗口，双击 `start-wb-proxy-visible.bat`。
-- **macOS / Linux**：双击 `start-wb-proxy.command` 或在终端执行 `./start-wb-proxy.sh [端口]`（默认 8788，需要 Python 3.9+）。
-- **局域网共享模式**：运行 `start-wb-proxy-lan.bat`（Windows）或 `./start-wb-proxy-lan.sh`（macOS/Linux），首次启动将自动生成高强度 API Key 并在控制台打印。
+- **局域网共享模式**：运行 `start-wb-proxy-lan.bat`，首次启动将自动生成高强度 API Key 并在控制台打印。
 - 启动后访问：
   - **Web 看板**：`http://127.0.0.1:8788/`（默认访问密码 `admin`，首次登录请在设置中修改）
   - **API 地址**：`http://127.0.0.1:8788/v1`
 
-### 2. Docker 部署
+### 2. 启动入口：优先用 `-m`
 
-预编译多架构镜像发布在 GHCR，无需本地构建：
-
-**方式一：一键脚本（推荐）**
-
-```bash
-# 官方源（直连 GitHub 环境）：
-curl -fsSL https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/main/quick-deploy.sh | bash
-
-# 国内网络 / NAS 加速：
-curl -fsSL https://gh-proxy.com/https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/main/quick-deploy.sh | sudo bash
-```
-
-> 公网部署或配合反向代理：在管道前指定 `WB_DEPLOY_MODE=public bash`，并搭配 Nginx / Caddy / Cloudflare Tunnel 配置 TLS。
-
-**方式二：单文件 Docker Compose**
-
-```yaml
-services:
-  wb-proxy:
-    image: ghcr.io/ardeyouxipianyi/workbuddy2api-hub:latest
-    container_name: wb-proxy
-    restart: unless-stopped
-    ports:
-      - "8788:8788"
-    environment:
-      - HOST=0.0.0.0
-      - PORT=8788
-      - TZ=Asia/Shanghai
-    volumes:
-      - ./accounts:/app/accounts    # 账号凭据与配置（持久化）
-      - ./usage:/app/usage          # 用量流水日志（持久化）
-```
-
-更新镜像：`docker compose pull && docker compose up -d`。
-
-### 3. 启动入口：优先用 `-m`
-
-同一份代码、同一个账号池，`python3 wb_proxy.py` 与 `python3 -m wb_proxy` 的常驻内存差 **47-54 MB**
+同一份代码、同一个账号池，`python wb_proxy.py` 与 `python -m wb_proxy` 的常驻内存差 **47-54 MB**
 （Windows 11 / aarch64、Python 3.12-3.14 四套环境实测一致，见 #702）。成因仍在排查，
 但只要换成 `-m` 就能拿到这段收益——512 MB 的设备上约 10%。
 
-```bash
-cd /path/to/workbuddy2api-hub        # 必须先进入 wb_proxy.py 所在目录
-python3 -m wb_proxy --port 8788
+```powershell
+cd "C:\path\to\workbuddy2api-hub"        # 必须先进入 wb_proxy.py 所在目录
+python -m wb_proxy --port 8788
 ```
 
 `-m` 把**当前目录**放进 `sys.path`，而脚本方式放的是脚本所在目录，所以务必先 `cd`。
-仓库内的资源路径都基于 `__file__` 解析，不受影响。Docker 镜像和 OpenWrt 包已改用 `-m`；
-Windows / macOS 的 `start-wb-proxy.*` 启动脚本暂未改动。
+仓库内的资源路径都基于 `__file__` 解析，不受影响。Windows 的 `.bat` 启动脚本仍使用脚本入口。
 
-### 4. CodeArts 原生第三出口
+### 3. CodeArts 原生第三出口
 
 网关内置进程内直连华为云 CodeArts，支持聊天 SSE 协议转换与自动签到，无需单独运行第三方桥接服务：
 1. 打开看板 →「设置 → CodeArts 接入」，勾选「启用 CodeArts 出口」并保存；
@@ -163,18 +106,18 @@ CodeArts 的模型 ID 按上游目录**精确匹配**：`deepseek-v4.1-flash` �
 
 **Codex CLI / Responses API**
 
-```bash
-export OPENAI_BASE_URL="http://127.0.0.1:8788/v1"
-export OPENAI_API_KEY="你在看板设置中添加并绑定的API_Key"
+```powershell
+$env:OPENAI_BASE_URL = "http://127.0.0.1:8788/v1"
+$env:OPENAI_API_KEY = "你在看板设置中添加并绑定的API_Key"
 ```
 
 **Claude Code / Anthropic Messages（实验性）**
 
 网关支持实验性 Messages 协议适配，因长会话缓存命中率差异，默认关闭：
-```bash
+```powershell
 # 网关端设置 WB_ENABLE_ANTHROPIC_MESSAGES=1 开启后生效：
-export ANTHROPIC_BASE_URL="http://127.0.0.1:8788"
-export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
+$env:ANTHROPIC_BASE_URL = "http://127.0.0.1:8788"
+$env:ANTHROPIC_API_KEY = "你在看板设置中添加并绑定的API_Key"
 ```
 
 ---
@@ -185,13 +128,12 @@ export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
 |---|---|---|
 | `PORT` | `8788` | 网关监听端口 |
 | `API_KEY` | 自动生成 | 初始 API Key（看板配置多 Key 后优先由看板管理） |
-| `WB_DEPLOY_MODE` | `lan` | 部署模式：`lan`（0.0.0.0）、`local`（127.0.0.1）、`public` |
 | `WB_MAX_PAYLOAD_BYTES` | `16777216` | 单请求体上限（字节，默认 16MB，支持 1–256 MB） |
 | `WB_ENABLE_ANTHROPIC_MESSAGES` | `0` | 是否开启实验性 Anthropic Messages 协议转换 |
 | `WB_BACKGROUND_MODEL_TARGET` | 留空 | 后台模型别名改写目标（如 DSH 客户端自动映射） |
 | `WB_CA_BUNDLE` | 留空 | 自签根证书路径（供抓包调试或中间代理使用） |
 | `WB_CN_CHAT_UPSTREAM` | 官方默认 | 国内版出站代理地址 |
-| `WB_IDENTITY_OS` | 宿主系统 | 仅 CLI 身份：覆盖 `x-stainless-os`（如 `Linux` / `Windows`） |
+| `WB_IDENTITY_OS` | `Windows` | 仅 CLI 身份：覆盖 `x-stainless-os` |
 | `WB_IDENTITY_ARCH` | 宿主架构 | 仅 CLI 身份：覆盖 `x-stainless-arch`（如 `x64` / `arm64`） |
 | `WB_IDENTITY_NODE_VERSION` | 官方默认 | 仅 CLI 身份：覆盖 `x-stainless-runtime-version` |
 
@@ -217,20 +159,22 @@ export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
 
 ## 六、测试验证
 
-```bash
+```powershell
 python tests/run_all.py            # 全部套件
 python tests/run_all.py realm      # 只跑名字里含 realm 的
 ```
 
-- 273 个套件：206 个 Python + 67 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
+- 271 个套件：204 个 Python + 67 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
 - `tests/_mobile_check.py` 是独立的 Playwright 手机/桌面布局检查器（需自行安装 Playwright），按需手动运行，不在上面的套件集里。
-- CI（`.github/workflows/tests.yml`）跑同一条命令：Ubuntu 上 python 3.9 与 3.12（3.9 是本项目声称的最低版本），Windows 上 python 3.12；推送 `v*` tag 时额外断言 **tag == 源码版本**（`-ci` 演练 tag 豁免）。
+- CI（`.github/workflows/tests.yml`）跑同一条命令：Windows 上 Python 3.9 与 3.12（3.9 是最低支持版本）；推送 `v*` tag 时额外断言 **tag == 源码版本**（`-ci` 演练 tag 豁免）。
 
 ---
 
 ## 七、版本更新记录 (Changelog)
 
 ### Unreleased
+
+- **仅保留 Windows 平台**：清理其他部署平台的脚本、配置与专属测试；运行、更新、打包和 CI 统一使用 Windows；发布包不再附带 Python，需自行安装 Python 3.9+，保留本机与局域网启动功能。
 
 - **用量聚合缓存跳过写盘时不再静默停更**：checkpoint 写盘因状态锁被占、状态暂不可序列化或写入异常而跳过时，按类节流告警并登记后台异步补写（30 秒起指数退避，封顶 15 分钟）；补写成功立即取消，失败继续重试。新增 64MB checkpoint 落后告警、蓝绿双进程临时文件隔离，避免 `remaining` 一类缓存连续多日不落盘、重启后反复全量重折。
 - **设置页分组在正體中文 / 英文界面不再整页空白**：分组胶囊靠各区块的 `h2` 标题文字比对归类，界面语言切到正體中文或英文后标题已被 i18n 换掉，比对全部落空、每个区块都归到「日志与系统」，于是点「基础 / 自动化 / 稳定性」时把整页 section 全部 hidden（看起来设置页清空）。现在改用 i18n 翻译前保留的原文比对，三种语言的分组结果一致；另补上漏归的「选择网页活跃提示词」（原来被归到「日志与系统」）。
@@ -251,7 +195,6 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
   `You are Claude Code` 指纹。覆盖大小写与弯引号，`user` / `tool` 内容不改写。
 - **添加账号时可指定登录出口代理槽**：OAuth 登录弹窗新增「登录出口代理」下拉（只在配置了启用的代理槽时出现），申请授权链接、等待回调与拉取账号资料都走选中的槽，登录成功后账号绑定到该槽，避免登录 IP 与后续调用 IP 不一致。默认「直连（不走代理槽）」，与以前完全一样；选「自动」(`proxySlot: "auto"`) 时随机挑一个没绑定账号（含 CodeArts 账号）、也没被其他进行中登录占用的槽，没有空闲槽则直连。已绑定槽的账号用「自动」重登会保留原槽；槽绑定不写进账号的旧版 `proxy` 字段。`/accounts/login/start` 的日志与响应只给代理的 host:port，不含用户名密码；不存在或已停用的槽返回 400。
 - 启动检查不再把"端口能连上但一直不答"当成端口空闲。此前 `--probe-only` 用 2 秒超时探 `/health`，卡死的实例只会让它超时，于是判定端口可用、又叠了一层实例；Windows 的 `SO_REUSEADDR` 允许重复监听，内核仍把新连接分给卡死的那个，看板与日志查看器就一直是空的。现在这种情况明确报错（退出码 1）并给出占端口 PID 的查法，不再静默重复启动。
-- 部署入口改用 `python3 -m wb_proxy`（OpenWrt init 与 Dockerfile）：同一份代码实测空闲内存少 47-54 MB（#702 / #777）。
 - 新增 `WB_DUMP_11_128` 本地取证开关（默认关闭）：`1` 只写脱敏摘要，`full` 额外写出站
   body，文件落在 `usage/11-128-dumps/`；用于定位 Claude Code 专属 11-128 的真实请求差异
   （#733）。摘要不含提示词明文，`full` 含明文但由使用者显式开启。
@@ -278,8 +221,6 @@ python tests/run_all.py realm      # 只跑名字里含 realm 的
 - **[ardeyouxipianyi/workbuddy2api](https://github.com/ardeyouxipianyi/workbuddy2api)**：国内版早期分发包逆向分析与出站 User-Agent 规范；
 
 ### 工程化与生态基础
-- **[aodianjun/workbuddy2api-hub](https://github.com/aodianjun/workbuddy2api-hub)**：OpenWrt 路由器打包配方（`.ipk` / `.apk`）与系统服务支持；
-- **[astral-sh/python-build-standalone](https://github.com/astral-sh/python-build-standalone)**：Windows 便携版免安装精简独立 Python 运行时构建基石；
 - **[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)**：DSH 客户端协议与提示词指纹清洗规避参考。
 
 感谢所有向本项目提交 PR、反馈 Issue 与分享实测样本的社区贡献者！

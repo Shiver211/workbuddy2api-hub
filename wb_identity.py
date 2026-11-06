@@ -100,9 +100,7 @@ def _identity_os():
     override = str(os.environ.get("WB_IDENTITY_OS") or "").strip()
     if override:
         return override
-    system = platform.system()
-    return {"Windows": "Windows", "Darwin": "MacOS", "Linux": "Linux"}.get(
-        system, system or "Linux")
+    return "Windows"
 
 
 def _identity_arch():

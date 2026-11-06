@@ -141,7 +141,7 @@ class LocalNetworkClassifierTests(unittest.TestCase):
         # HTTPError delegates missing attributes to its response on Python
         # 3.9. With fp=None, probing errno/winerror used to raise KeyError.
         class DelegatingHTTPError(urllib.error.HTTPError):
-            # Model that Linux 3.9 lookup on every test platform, including
+            # Model that Python 3.9 lookup on newer interpreters, including
             # Windows versions whose OSError slots return None instead.
             def __getattribute__(self, name):
                 if name in ("errno", "winerror"):

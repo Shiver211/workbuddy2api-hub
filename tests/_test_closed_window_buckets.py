@@ -902,8 +902,7 @@ cache_env()
 
 print()
 print("[10] 夏令时假时区：闭窗口跨切换日照样正确，格点被挪动时退回")
-# 无 tzset 的平台（Windows）用「把日桶 at 挪 3600 秒」的变异钉住格点校验；
-# 有 tzset 的平台（CI 的 Linux）再叠一组真实柏林夏令时用例。
+# Windows 用「把日桶 at 挪 3600 秒」的变异钉住格点校验。
 cache_env_nowrite()
 restart()
 series_window(DAY_LO, DAY_HI)
@@ -945,93 +944,6 @@ check("恢复后小时层又能用",
       P._usage_snapshot_window_from_hours(None, HOUR_LO, HOUR_HI, None)
       is not None)
 
-if hasattr(time, "tzset"):
-    # 真实夏令时时区（Europe/Berlin 2026-10-25 结束夏令时，那天 25 小时）：
-    # 冻结时钟挪到切换之后（10-28 12:00，晚于最后一行），造一批横跨切换日
-    # 的行，再跑闭窗口。
-    #
-    # 三条纪律（与 _test_usage_day_buckets.py §[9] 同一套）：
-    #   * 与「整段扫描」比的是同一种东西——公开入口对公开入口；
-    #   * 先确认「本机真的被切到了柏林」再断言：只有 POSIX TZ 支持的系统会
-    #     把 IANA 名悄悄降级成 UTC，那时日边界不再被挪动，断言会以误导性的
-    #     方式失败。用 10-25 那天是不是 25 小时来验证，两个 TZ 值都做不到就
-    #     跳过这段；
-    #   * 行都带 +0.25，普通行不落整秒（边沿账只收整秒行）。
-    ZONES = ("Europe/Berlin", "CET-1CEST,M3.5.0,M10.5.0/3")
-    old_tz = os.environ.get("TZ")
-    chosen = None
-    for zone in ZONES:
-        os.environ["TZ"] = zone
-        time.tzset()
-        if (time.mktime((2026, 10, 26, 0, 0, 0, 0, 0, -1))
-                - time.mktime((2026, 10, 25, 0, 0, 0, 0, 0, -1))) == 90000:
-            chosen = zone
-            break
-    try:
-        if chosen is None:
-            print("  [SKIP] 本机无法把进程切到柏林夏令时（%s 都不生效）"
-                  % (", ".join(ZONES)))
-        else:
-            print("  [INFO] 夏令时用例使用 TZ=%s" % chosen)
-            _time.time = lambda: time.mktime((2026, 10, 28, 12, 0, 0, 0, 0, -1))
-            base = time.mktime((2026, 10, 22, 12, 0, 0, 0, 0, -1))
-            dst_rows = [row(base + d * 86400 + h * 3600 + 0.25, "m-a", "u1",
-                            10, 1)
-                        for d in range(6) for h in (0, 6, 12, 18)]
-            write_log(dst_rows)
-            M24 = time.mktime((2026, 10, 24, 0, 0, 0, 0, 0, -1))
-            M27 = time.mktime((2026, 10, 27, 0, 0, 0, 0, 0, -1))
-            M28 = time.mktime((2026, 10, 28, 0, 0, 0, 0, 0, -1))
-            # (a) 切换之后的规则日：日格点闭窗口走日桶，与逐行口径逐字节一致。
-            ref = canon(ref_window(M27, M28))
-            cache_env_nowrite()
-            restart()
-            P._usage_alltime_snapshot(None)
-            with ScanCounter() as counter:
-                got = canon(window_raw(M27, M28))
-            check("夏令时：切换后规则日闭窗口走日桶（扫描 0 次）、逐字节一致",
-                  got == ref and counter.calls == 0,
-                  (first_diff(ref, got), counter.calls, counter.per))
-            # (b) 横跨 25 小时那天的日格点闭窗口：日键求和与逐行口径一致。
-            ref = canon(ref_window(M24, M27))
-            cache_env_nowrite()
-            restart()
-            got = canon(window_raw(M24, M27))
-            check("夏令时：横跨切换日的日格点闭窗口与逐行口径逐字节一致",
-                  got == ref, first_diff(ref, got))
-            # (c) 切换日的小时级闭窗口（05:00-07:00 墙钟）：层或冷路径都要
-            # 与逐行口径逐字节一致（层够不到保留线时由冷路径回答）。
-            h_lo = time.mktime((2026, 10, 25, 5, 0, 0, 0, 0, -1))
-            h_hi = time.mktime((2026, 10, 25, 7, 0, 0, 0, 0, -1))
-            ref = canon(ref_window(h_lo, h_hi))
-            cache_env_nowrite()
-            restart()
-            got = canon(window_raw(h_lo, h_hi))
-            check("夏令时：切换日的小时级闭窗口与逐行口径逐字节一致",
-                  got == ref, first_diff(ref, got))
-            # (d) 日边界被挪动：横跨切换日的切片必须放弃（退回扫描），结果一致。
-            cache_env_nowrite()
-            restart()
-            series_window(M24, M28, bucket=86400)
-            sliced = P._series_slice(P._series_state[None], None, M24, M28,
-                                     86400,
-                                     time.strftime("%Y-%m-%d",
-                                                   time.localtime(M24)))
-            check("夏令时：横跨切换日的日桶切片放弃（格点被挪动）",
-                  sliced is None, None if sliced is None else "切片竟然成立了")
-            ref = canon(ref_series(M24, M28, bucket=86400))
-            got = canon(series_window(M24, M28, bucket=86400))
-            check("夏令时：放弃后整段扫描的结果与逐行口径一致",
-                  got == ref, first_diff(ref, got))
-    finally:
-        _time.time = lambda: FROZEN
-        if old_tz is None:
-            os.environ.pop("TZ", None)
-        else:
-            os.environ["TZ"] = old_tz
-        time.tzset()
-else:
-    print("  [SKIP] 本平台没有 time.tzset，跳过真实夏令时时区用例")
 write_log(ROWS)
 cache_env_nowrite()
 restart()

@@ -4,7 +4,7 @@
 本脚本只做两件 wb_pricing 自己不适合做的事：
 
   1. 把快照写成 pricing/pricing.json（本地运行时优先读它）；
-  2. --embed：把同一份快照回写进 wb_pricing.py 的内嵌副本，让 Docker 镜像
+  2. --embed：把同一份快照回写进 wb_pricing.py 的内嵌副本，让便携安装
      （只 COPY wb_*.py，不带 pricing/ 目录）自带一份价格。
 
 网关运行时**不依赖本脚本**：它按面板上配置的间隔自己抓取，并把每一版追加

@@ -56,7 +56,7 @@ class UnavailableReasonTests(unittest.TestCase):
             reason = acc.unavailable_reason(model="deepseek-v4.1-flash")
             self.assertIn(label, reason, field)
             # 只断言「带上了剩余时间」，不断言具体分钟数：_human_delta 是
-            # int(秒/60)，而 Windows 的时钟精度是毫秒级、Linux 是纳秒级——
+            # int(秒/60)，而 不同计时来源的精度可能是毫秒级或纳秒级——
             # 同一份代码在两边会差一分钟，钉死分钟数就是在钉运行环境。
             self.assertIn("剩余", reason, field)
 

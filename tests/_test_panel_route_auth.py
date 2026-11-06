@@ -265,19 +265,16 @@ class PanelOnlyPostTests(BoundaryCase):
 class RemoteAgentsTests(BoundaryCase):
     """一键配置只在「浏览器和网关同一台机器」时可用（issue #246）。
 
-    判据是请求来源地址：远程看板（手机 / 另一台电脑 / 容器端口映射）即使拿着
-    面板会话，也读不到客户端清单、更写不了网关所在机器的客户端配置。环境标记
-    （容器 / OpenWrt）另算一道，命中时连回环来源也不放行。
+    判据是请求来源地址：远程看板（手机 / 另一台电脑）即使拿着
+    面板会话，也读不到客户端清单、更写不了网关所在机器的客户端配置。
     """
 
-    def dispatch_remote(self, path, headers=None, command="GET", body=b"",
-                        deployment=None):
+    def dispatch_remote(self, path, headers=None, command="GET", body=b""):
         request = DispatchRequest(path, headers=headers, command=command, body=body)
         request.client_address = ("192.168.1.20", 40000)
         with mock.patch.multiple(proxy, ACCOUNTS_DIR=self.directory, API_KEY=None,
                                  POOL=None, PRICING=None, UPDATES=self.updates,
-                                 SCHEDULER=None, fetch_models=injected_models,
-                                 _SERVER_DEPLOYMENT=deployment):
+                                 SCHEDULER=None, fetch_models=injected_models):
             return request.dispatch()
 
     def test_a_remote_panel_reads_enabled_false(self):
@@ -303,25 +300,13 @@ class RemoteAgentsTests(BoundaryCase):
         request = DispatchRequest("/agents/available", headers=self.session())
         with mock.patch.multiple(proxy, ACCOUNTS_DIR=self.directory, API_KEY=None,
                                  POOL=None, PRICING=None, UPDATES=self.updates,
-                                 SCHEDULER=None, fetch_models=injected_models,
-                                 _SERVER_DEPLOYMENT=False):
+                                 SCHEDULER=None, fetch_models=injected_models):
             status, payload, _raw = request.dispatch()
         self.assertEqual((status, payload), (200, {"enabled": True}))
         status, payload, _raw = self.dispatch_remote("/agents/available",
-                                                    self.session(),
-                                                    deployment=False)
+                                                    self.session())
         self.assertEqual((status, payload), (200, {"enabled": False}))
 
-    def test_a_container_marker_disables_it_even_from_loopback(self):
-        # --network host 的容器里，来源就是 127.0.0.1，但写进去的是容器里的
-        # 配置目录；环境标记必须压过来源判定。
-        request = DispatchRequest("/agents/available", headers=self.session())
-        with mock.patch.multiple(proxy, ACCOUNTS_DIR=self.directory, API_KEY=None,
-                                 POOL=None, PRICING=None, UPDATES=self.updates,
-                                 SCHEDULER=None, fetch_models=injected_models,
-                                 _SERVER_DEPLOYMENT=True):
-            status, payload, _raw = request.dispatch()
-        self.assertEqual((status, payload), (200, {"enabled": False}))
 
 
 class ApiKeySurfaceTests(BoundaryCase):

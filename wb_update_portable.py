@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """Portable-package updater (issue #560).
 
-The panel's install button used to require the root-owned systemd worker.
-A portable zip has no unit files, so this module implements the same
-contract for it: download the release zip, verify SHA256SUMS, stop the
+This module updates the Windows portable package: download the release zip,
+verify SHA256SUMS, stop the
 gateway, replace the files listed in release-manifest.json, restart, and
 roll back on failure. The work runs in a detached helper (wb_update_apply.py)
 because a process cannot replace and restart itself.
@@ -14,7 +13,6 @@ import os
 import posixpath
 import re
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -78,8 +76,6 @@ def available():
         return False
     if not os.path.isfile(os.path.join(app_root(), HELPER_NAME)):
         return False
-    if os.name == "nt":
-        return os.path.isfile(os.path.join(app_root(), "python", "python.exe"))
     return True
 
 
@@ -171,13 +167,6 @@ def safe_extract(zip_path, dest, root_name):
             os.makedirs(os.path.dirname(target), exist_ok=True)
             with zf.open(info) as src, open(target, "wb") as out:
                 shutil.copyfileobj(src, out)
-            # Keep the entry's unix mode: the launch scripts ship 755 and the
-            # post-update restart Popen()s them — a 644 copy dies with EACCES
-            # and rolls the whole update back. Entries without unix attrs keep
-            # the default mode; setuid/sticky bits are never restored.
-            mode = (info.external_attr >> 16) & 0o777
-            if mode:
-                os.chmod(target, mode)
     return dest
 
 
@@ -234,13 +223,9 @@ def validate_stage(stage, version, root_name):
 def profile_files(manifest, profile=None):
     """The file list one deployment profile owns (issue #573).
 
-    A portable package owns the whole manifest: launchers, the aliyun updater
-    units and the bundled pricing snapshot are all part of it. An image /
-    rootfs deployment only owns the app layer it runs, and writing the rest
-    into it creates files the image never had - `pricing/pricing.json` then
-    shadows the snapshot inlined in wb_pricing.py with nothing to keep the two
-    in sync. `None` keeps the historical full-list behaviour, so an executor
-    that predates this feature behaves exactly as before.
+    Windows 便携包按完整清单更新；自定义安装的外部执行器可只更新应用层。
+    应用层不写入启动脚本或价格快照，避免覆盖部署方管理的文件。
+    None 使用完整清单，兼容已有的 Windows 便携包。
     """
     files = manifest["files"]
     if not profile:
@@ -542,7 +527,7 @@ def keep_backups_setting(root):
 
     The executors run as the same user as the gateway, so they read the same
     accounts/settings.json the panel writes. A deployment without that file (a
-    bare checkout, the systemd layout) simply keeps the default instead of
+    bare checkout, a custom installation) simply keeps the default instead of
     failing the update over a missing setting.
     """
     try:
@@ -586,17 +571,12 @@ def wait_port_free(port, timeout=20):
 
 
 def stop_gateway(pid):
-    if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(int(pid)), "/F"],
-                       capture_output=True, timeout=20)
-    else:
-        os.kill(int(pid), signal.SIGTERM)
+    subprocess.run(["taskkill", "/PID", str(int(pid)), "/F"],
+                   capture_output=True, timeout=20)
 
 
 def is_visible_process(pid):
     """True when the gateway runs as python.exe (visible console), not pythonw."""
-    if os.name != "nt":
-        return False
     try:
         out = subprocess.run(
             ["tasklist", "/FI", "PID eq %d" % int(pid),
@@ -611,26 +591,20 @@ def is_visible_process(pid):
 def start_service(root, port, lan, visible=False):
     devnull = open(os.devnull, "rb")
     try:
-        if os.name == "nt":
-            if lan and visible:
-                bat = "start-wb-proxy-lan-visible.bat"
-            elif lan:
-                bat = "start-wb-proxy-lan.bat"
-            elif visible:
-                bat = "start-wb-proxy-visible.bat"
-            else:
-                bat = "start-wb-proxy.bat"
-            flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
-                     | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-            subprocess.Popen(["cmd", "/c", bat, str(port)], cwd=root,
-                             stdin=devnull, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, creationflags=flags,
-                             close_fds=True)
+        if lan and visible:
+            bat = "start-wb-proxy-lan-visible.bat"
+        elif lan:
+            bat = "start-wb-proxy-lan.bat"
+        elif visible:
+            bat = "start-wb-proxy-visible.bat"
         else:
-            script = "start-wb-proxy-lan.sh" if lan else "start-wb-proxy.sh"
-            subprocess.Popen([os.path.join(root, script), str(port)], cwd=root,
-                             stdin=devnull, stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, start_new_session=True)
+            bat = "start-wb-proxy.bat"
+        flags = (getattr(subprocess, "DETACHED_PROCESS", 0)
+                 | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        subprocess.Popen(["cmd", "/c", bat, str(port)], cwd=root,
+                         stdin=devnull, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, creationflags=flags,
+                         close_fds=True)
     finally:
         devnull.close()
 
@@ -684,11 +658,8 @@ def _spawn_helper(cmd, version, failure):
     kwargs = dict(cwd=app_root(), stdin=subprocess.DEVNULL,
                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                   close_fds=True)
-    if os.name == "nt":
-        kwargs["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)
-                                   | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-    else:
-        kwargs["start_new_session"] = True
+    kwargs["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)
+                               | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
     try:
         subprocess.Popen(cmd, **kwargs)
     except Exception as exc:
@@ -753,7 +724,7 @@ def run_update(root, package, tag, version, port, lan, pid, repo,
     """Helper entry point: download, verify, apply, restart, roll back.
 
     `profile` selects a manifest sub-list (see profile_files). Portable
-    packages leave it unset; an image / rootfs deployment passes "app" so the
+    packages leave it unset; an image / custom Windows installation passes "app" so the
     update only touches the layer that deployment actually runs (#573).
     """
     if start_service_fn is _UNSET:

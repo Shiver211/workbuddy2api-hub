@@ -22,10 +22,7 @@
 ## 做法
 
 1. **单次 `os.write`**：整行先编码成 bytes，再一次系统调用写完，不给交叉留缝隙；
-2. **`O_APPEND`**：由内核把写入位置定在末尾。POSIX 明确保证"设置偏移到末尾"与
-   "写入"之间不会插入别的修改，所以**单次 write 在 POSIX 上已经是原子的**，
-   这里不再额外加 flock（也就避开了 `fcntl`——它在 Windows 上不存在，
-   而便携运行时的白名单里没有它）；
+2. **`O_APPEND`**：追加到文件末尾；Windows CRT 的并发写入还需要文件锁。
 3. **Windows 额外加锁**：`_O_APPEND` 走 CRT，并发句柄之间不保证原子，用
    `msvcrt.locking` 锁一个独立的 `.lock` 文件（不锁数据文件，避免干扰读的一侧）；
 4. **进程内线程锁**：同进程多线程先串起来，减少跨进程争抢。
@@ -36,31 +33,23 @@ import threading
 _LOCK_SUFFIX = ".lock"
 _THREAD_LOCK = threading.Lock()
 
-try:                                                    # Windows
-    import msvcrt
+import msvcrt
 
-    def _lock(lock_fd):
-        # LK_LOCK 重试 10 秒后抛 OSError；账本争抢是毫秒级的，够用。
-        while True:
-            try:
-                msvcrt.locking(lock_fd, msvcrt.LK_LOCK, 1)
-                return
-            except OSError:
-                # 拿不到就继续等：这里没有别的退路，放弃等于丢账。
-                continue
-
-    def _unlock(lock_fd):
+def _lock(lock_fd):
+    # LK_LOCK 重试 10 秒后抛 OSError；账本争抢是毫秒级的，够用。
+    while True:
         try:
-            msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+            msvcrt.locking(lock_fd, msvcrt.LK_LOCK, 1)
+            return
         except OSError:
-            pass
+            # 拿不到就继续等：这里没有别的退路，放弃等于丢账。
+            continue
 
-except ImportError:                                     # POSIX：单次 write 已原子
-    def _lock(lock_fd):
-        return None
-
-    def _unlock(lock_fd):
-        return None
+def _unlock(lock_fd):
+    try:
+        msvcrt.locking(lock_fd, msvcrt.LK_UNLCK, 1)
+    except OSError:
+        pass
 
 
 def append_line(path, text, error_hook=None):

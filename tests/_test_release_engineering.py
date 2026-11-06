@@ -1,8 +1,8 @@
 """Release engineering pins (M6 F1-F3).
 
-The workflows, Dockerfile and compose file are text artifacts nothing else in
+The workflows are text artifacts nothing else in
 the suite executes; these assertions keep the release discipline from silently
-disappearing (checksums asset, tag == source version, healthcheck, PUID/PGID).
+disappearing (checksums asset and tag == source version).
 The last class keeps merge leftovers (conflict markers) out of the tree.
 
 Run with: python _test_release_engineering.py
@@ -45,21 +45,11 @@ class WorkflowTests(unittest.TestCase):
         text = read(".github", "workflows", "release-checksums.yml")
         self.assertIn("types: [published]", text)
         self.assertIn("gh release download", text)
-        self.assertIn("sha256sum *", text)
+        self.assertIn("Get-FileHash", text)
         self.assertIn("gh release upload", text)
         self.assertIn("checksums.txt", text)
 
 
-class DockerTests(unittest.TestCase):
-    def test_healthcheck_probes_the_health_endpoint(self):
-        text = read("Dockerfile")
-        self.assertIn("HEALTHCHECK", text)
-        self.assertIn("/health", text)
-
-    def test_compose_supports_puid_pgid(self):
-        text = read("docker-compose.yml")
-        self.assertIn("${PUID:-", text)
-        self.assertIn("${PGID:-", text)
 
 
 class ReadmeTests(unittest.TestCase):

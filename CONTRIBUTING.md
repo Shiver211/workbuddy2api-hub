@@ -35,9 +35,9 @@
 | 测试全绿 | `python tests/run_all.py`（全部套件；CI 里并行跑 `--jobs 4`）。JS 套件需要 PATH 上有 `node`，缺失会跳过并提示——补上 node 再跑；单跑一个套件：`python tests/_test_xxx.py` |
 | 干净检出 | 跑完矩阵后 `python scripts/check_clean_checkout.py`（CI 会钉：套件不许写脏仓库） |
 | 套件计数 | 新增/删除测试套件后，同步 README 的「N 个套件：X 个 Python + Y 个 JS」（有测试钉住） |
-| 依赖口径 | 保持**纯 Python 标准库**、兼容 **Python 3.9**（CI 矩阵：3.9 / 3.12 × Ubuntu / Windows） |
+| 依赖口径 | 保持**纯 Python 标准库**、兼容 **Python 3.9**（CI 矩阵：Windows Python 3.9 / 3.12） |
 | 面板文案 | 改看板文案要同步词典：繁体有测试钉住，英文词典一并补（键与 HTML 文本逐字一致，否则英文界面回落中文） |
-| 文本卫生 | 文本文件 LF；可执行脚本保持 755（`wrt/` 打包文件尤其） |
+| 文本卫生 | 文本文件 LF；Windows `.bat` / `.ps1` 使用 CRLF |
 | 隐私 | 不夹带密钥、token、个人信息、本机绝对路径 |
 | 行为变更 | 会改变默认行为的改动给开关、**默认关**；老安装行为不变 |
 | 版本号 | 涉及版本号时，`server_version` 与打包脚本、tag 三处一致（release 门禁会核对 tag == 源码版本） |
@@ -45,7 +45,7 @@
 
 ## 2. PR 标题与正文
 
-- **标题**：`<type>(<scope>): 中文摘要`；type 用 `feat` / `fix` / `perf` / `test` / `docs` / `refactor` / `wrt`。
+- **标题**：`<type>(<scope>): 中文摘要`；type 用 `feat` / `fix` / `perf` / `test` / `docs` / `refactor`。
 - **正文至少写清五件事**：
   1. **动机**：关联 issue / 用户场景 / 上一 PR 的跟进；
   2. **做了什么**：口径写具体（字段名、默认值、开关、边界条件），别只写「优化了 X」；
@@ -55,7 +55,7 @@
 
 ## 3. CI 与合并
 
-- **三条腿全绿才算过**：`ubuntu 3.9`、`ubuntu 3.12`、`windows 3.12`（`tag matches source version` 只在打标签时跑，PR 上 skipped 属正常）。
+- **两条矩阵任务全绿才算过**：`windows 3.9`、`windows 3.12`（`tag matches source version` 只在打标签时跑，PR 上 skipped 属正常）。
 - **冲突怎么解**：在分支上解，**两边都留**（不要「取一侧」）；解完 push 回分支让 CI 重跑。**不要**在本地把冲突解掉后直接 push main——PR 触发的 CI 看不到那条路。
 - **回滚检查（revert guard）**：核对 GitHub 预计算的合并结果——base 自 merge-base 以来新增的代码行不许消失（本 PR 自己删的除外）。红了：
   1. 推荐：把分支 rebase 到最新 main，检查自动转绿；

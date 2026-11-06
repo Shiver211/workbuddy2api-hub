@@ -4,7 +4,7 @@
 
 Prints the effective chat headers for each loaded account with credentials
 redacted. It makes no network request, so it is safe to run against an
-offline or idle gateway and is useful when comparing a Windows and Linux
+offline or idle gateway and is useful when comparing two Windows
 installation that both hit upstream code 11-128.
 
 Examples:

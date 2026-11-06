@@ -196,7 +196,7 @@ class KeyblobTests(unittest.TestCase):
 
 
 class AdoptKeyTests(unittest.TestCase):
-    """手工导入密钥：macOS / Linux 上没有进程内存回收那条路时用。
+    """手工导入密钥：自动回收失败时使用。
 
     导入与回收共用同一道闸——先过 unwrap_keyblob() 自检，过不了就原样报错，
     不动内存里已有的密钥。

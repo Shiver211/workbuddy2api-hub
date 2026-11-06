@@ -28,7 +28,6 @@ import argparse
 import os
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -122,9 +121,7 @@ def first_error(lines):
 
 def start_kwargs():
     """Put the suite in its own process group, so its tree can be killed."""
-    if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
+    return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
 
 
 def kill_tree(proc):
@@ -137,15 +134,12 @@ def kill_tree(proc):
     if proc.poll() is not None:
         return
     try:
-        if os.name == "nt":
-            done = subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                                  stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=30)
-            if done.returncode != 0:
-                # taskkill refused (a locked-down host, or the pid is gone).
-                proc.kill()
-        else:
-            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        done = subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=30)
+        if done.returncode != 0:
+            # taskkill refused (a locked-down host, or the pid is gone).
+            proc.kill()
     except Exception:
         try:
             proc.kill()

@@ -531,38 +531,6 @@ class ReadApiTests(IsolatedCase):
         now_midnight = time.localtime(wb_activity.local_midnight())
         self.assertEqual((now_midnight.tm_hour, now_midnight.tm_min), (0, 0))
 
-    def test_local_midnight_uses_the_offset_in_force_at_midnight(self):
-        """夏令时切换日：本地零点与此刻的偏移不同，零点要按零点那一刻的规则算。
-
-        美国 2026-03-08 02:00 进入夏令时：当天 12:00 是 EDT(-4)，而当天零点还是
-        EST(-5)。拿此刻的偏移去替换字段会得到 04:00Z（早一小时），把前一天 23:00
-        之后的记录算进「今日」；11-01 回拨那天反过来晚一小时，把今天 00:00-01:00
-        的记录漏掉。这条检查需要平台能在进程内切换时区（POSIX 的 tzset），
-        Windows 上跳过 —— 核心用例不依赖它。
-        """
-        if not hasattr(time, "tzset"):
-            self.skipTest("this platform cannot switch time zones at runtime")
-        original = os.environ.get("TZ")
-        try:
-            os.environ["TZ"] = "America/New_York"
-            time.tzset()
-            spring_noon = calendar.timegm((2026, 3, 8, 16, 0, 0, 0, 0, 0))
-            if time.localtime(spring_noon).tm_hour != 12:
-                self.skipTest("no America/New_York tz data on this platform")
-            # 春季：真零点 05:00Z（EST），按此刻的 -4 会算成 04:00Z
-            self.assertEqual(wb_activity.local_midnight(spring_noon),
-                             calendar.timegm((2026, 3, 8, 5, 0, 0, 0, 0, 0)))
-            # 秋季：真零点 04:00Z（EDT），按此刻的 -5 会算成 05:00Z
-            fall_noon = calendar.timegm((2026, 11, 1, 17, 0, 0, 0, 0, 0))
-            self.assertEqual(time.localtime(fall_noon).tm_hour, 12)
-            self.assertEqual(wb_activity.local_midnight(fall_noon),
-                             calendar.timegm((2026, 11, 1, 4, 0, 0, 0, 0, 0)))
-        finally:
-            if original is None:
-                os.environ.pop("TZ", None)
-            else:
-                os.environ["TZ"] = original
-            time.tzset()
 
     def test_filters(self):
         self.seed(self.window_rows())

@@ -52,7 +52,7 @@ MAX_SECTION_MAX_HEIGHT = 4000
 # How many app-layer backups a successful update keeps under <app>/updates.
 # Rollback works off those backups, so 0 means "no rollback at all"; 1 is the
 # default because it is enough to undo one step and each backup is a few MB.
-# Capped at 3: the app layer is ~5 MB per copy and the container's rootfs is
+# Capped at 3: the app layer is ~5 MB per copy and disk space is
 # small, so an unbounded value is a foot-gun rather than a feature.
 KEEP_BACKUPS_KEY = "keep_backups"
 DEFAULT_KEEP_BACKUPS = 1

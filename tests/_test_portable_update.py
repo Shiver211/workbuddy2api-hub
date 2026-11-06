@@ -90,39 +90,6 @@ class ExtractTests(unittest.TestCase):
             with self.assertRaises(U.UpdateError):
                 U.safe_extract(path, os.path.join(d, "out"), "wb-proxy")
 
-    def test_safe_extract_preserves_unix_modes(self):
-        # 启动脚本在包里是 755，解包后必须保持可执行：否则一键更新在
-        # macOS/Linux 的重启一步 Popen() 报 EACCES，整次更新被迫回滚。
-        # 没有 unix 属性的条目维持默认权限，不应被凭空赋予执行位。
-        # The launchers ship 755 and the restart Popen()s them, so a 644 copy
-        # rolls the whole update back (Errno 13). Entries without unix attrs
-        # must not gain an executable bit out of nowhere.
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "modes.zip")
-            with zipfile.ZipFile(path, "w") as zf:
-                info = zipfile.ZipInfo("wb-proxy/start-wb-proxy.sh")
-                info.external_attr = 0o755 << 16
-                zf.writestr(info, "#!/bin/sh\n")
-                info = zipfile.ZipInfo("wb-proxy/wb_proxy.py")
-                info.external_attr = 0o644 << 16
-                zf.writestr(info, "x = 1\n")
-                info = zipfile.ZipInfo("wb-proxy/plain.txt")
-                info.external_attr = 0
-                zf.writestr(info, "plain\n")
-            out = os.path.join(d, "out")
-            U.safe_extract(path, out, "wb-proxy")
-            if os.name == "nt":
-                # Windows stores no exec bit (chmod only maps the read-only
-                # bit); extraction succeeding without an error is the contract.
-                self.assertTrue(os.path.isfile(
-                    os.path.join(out, "wb-proxy", "start-wb-proxy.sh")))
-                return
-            self.assertEqual(stat.S_IMODE(os.lstat(os.path.join(
-                out, "wb-proxy", "start-wb-proxy.sh")).st_mode), 0o755)
-            self.assertEqual(stat.S_IMODE(os.lstat(os.path.join(
-                out, "wb-proxy", "wb_proxy.py")).st_mode), 0o644)
-            self.assertFalse(stat.S_IMODE(os.lstat(os.path.join(
-                out, "wb-proxy", "plain.txt")).st_mode) & 0o111)
 
 
 class StageTests(unittest.TestCase):
@@ -239,7 +206,7 @@ class ApplyTests(unittest.TestCase):
 
 
 class ProfileTests(unittest.TestCase):
-    """#573：镜像 / rootfs 部署只拥有应用层。
+    """#573：自定义 Windows 安装只拥有应用层。
 
     便携包按整份清单更新；镜像部署没有 start-wb-proxy*、ops/ 和随包价格快照，
     把它们写进去只会多出镜像本来没有的文件，其中 pricing/pricing.json 还会盖掉
@@ -369,8 +336,7 @@ class ProfileTests(unittest.TestCase):
 class RequestTests(unittest.TestCase):
     def test_bridge_reports_portable_install_enabled(self):
         import wb_update_request as R
-        with mock.patch.object(R, "_systemd_enabled", return_value=False), \
-                mock.patch.object(R.wb_update_portable, "available",
+        with mock.patch.object(R.wb_update_portable, "available",
                                   return_value=True), \
                 mock.patch.object(R.wb_update_portable, "status",
                                   return_value={"state": "idle", "version": "",
@@ -386,6 +352,18 @@ class RequestTests(unittest.TestCase):
         self.assertFalse(U.available())
         with self.assertRaises(U.UpdateError):
             U.request_install("v2.0.0", "1.0.0")
+
+    def test_application_package_updates_with_system_python(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with mock.patch.object(U, "app_root", return_value=directory), \
+                    mock.patch.object(U, "package_root", return_value=directory):
+                for name in (U.MANIFEST_NAME, U.HELPER_NAME):
+                    with open(os.path.join(directory, name), "w") as fh:
+                        fh.write("{}")
+                self.assertTrue(U.available())
+                self.assertFalse(os.path.exists(os.path.join(directory, "python")))
+                os.unlink(os.path.join(directory, U.HELPER_NAME))
+                self.assertFalse(U.available())
 
     def test_request_spawns_helper_with_port_and_mode(self):
         with tempfile.TemporaryDirectory() as d:
@@ -445,8 +423,6 @@ class ExternalBridgeTests(unittest.TestCase):
             with mock.patch.object(R, "REQUEST_DIR", d), \
                     mock.patch.object(R, "REQUEST_FILE", request_file), \
                     mock.patch.object(R, "STATUS_FILE", status_file), \
-                    mock.patch.object(R, "_systemd_enabled",
-                                      return_value=False), \
                     mock.patch.object(R, "external_enabled",
                                       return_value=True), \
                     mock.patch.object(R, "install_enabled",
@@ -460,7 +436,7 @@ class ExternalBridgeTests(unittest.TestCase):
                 self.assertEqual(payload["port"], 8899)
                 self.assertEqual(payload["pid"], os.getpid())
                 self.assertTrue(os.path.isdir(payload["root"]))
-                # 非便携包部署（镜像 / 自建 rootfs）只拥有应用层（#573）。
+                # 非便携包部署（自定义 Windows 安装）只拥有应用层（#573）。
                 self.assertEqual(payload.get("profile"), "app")
                 self.assertEqual(R.status()["installation"]["state"], "queued")
 

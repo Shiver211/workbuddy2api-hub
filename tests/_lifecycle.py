@@ -9,7 +9,6 @@ That is what makes the tree cleanup unambiguous - there is no ownership flag to
 get wrong, and signalling the group can never reach the caller's own group.
 """
 import os
-import signal
 import socket
 import subprocess
 
@@ -31,8 +30,7 @@ def spawn_managed(*args, **kwargs):
 
     Anything Popen accepts can be passed through; the two group flags are set here.
     """
-    kwargs.update({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-                  if os.name == "nt" else {"start_new_session": True})
+    kwargs.update(creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
     return subprocess.Popen(*args, **kwargs)
 
 
@@ -46,36 +44,21 @@ def stop_managed(proc, timeout=STOP_TIMEOUT):
     """
     if proc is None:
         return True
-    if os.name == "nt":
-        if proc.poll() is not None:
-            return False
-        # Ask first, force if it does not go - and never wait on a pass that was
-        # rejected, which is what turns a refused taskkill into a 10s stall.
-        walked = _taskkill(proc.pid, force=False)
-        if walked:
+    if proc.poll() is not None:
+        return False
+    # Ask first, force if it does not go - and never wait on a pass that was
+    # rejected, which is what turns a refused taskkill into a 10s stall.
+    walked = _taskkill(proc.pid, force=False)
+    if walked:
+        _reap(proc, timeout)
+    if proc.poll() is None:
+        forced = _taskkill(proc.pid, force=True)
+        walked = walked or forced
+        if forced:
             _reap(proc, timeout)
-        if proc.poll() is None:
-            forced = _taskkill(proc.pid, force=True)
-            walked = walked or forced
-            if forced:
-                _reap(proc, timeout)
-        if proc.poll() is None:
-            _reap(proc, 5, kill=True)
-        return bool(walked and proc.poll() is not None)
-    # POSIX: the child leads its own group, so the group id is its pid - and the
-    # group outlives the leader, which is what reaches a grandchild left behind.
-    pgid = proc.pid
-    try:
-        os.killpg(pgid, signal.SIGTERM)
-        proc.wait(timeout=timeout)
-    except Exception:
-        pass
-    try:
-        os.killpg(pgid, signal.SIGKILL)
-    except OSError:
-        pass
-    _reap(proc, 5)
-    return proc.poll() is not None
+    if proc.poll() is None:
+        _reap(proc, 5, kill=True)
+    return bool(walked and proc.poll() is not None)
 
 
 def _reap(proc, timeout, kill=False):

@@ -38,16 +38,22 @@ permissions:
 jobs:
   guard:
     name: revert guard (回滚检查)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     timeout-minutes: 10
+    env:
+      PYTHONUTF8: "1"
     steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: 核对合并结果是否回退 main 的代码
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+        shell: pwsh
         run: |
-          python3 - --repo "$REPO" --pr "$PR" --ack-label revert-confirmed <<'PY'
+          @'
           #!/usr/bin/env python3
           # -*- coding: utf-8 -*-
           """revert_guard — 检测一个 PR 合并后是否会「回退 main 上已有的代码」。
@@ -374,4 +380,4 @@ jobs:
                   sys.exit(main())
               except KeyboardInterrupt:
                   sys.exit(2)
-          PY
+          '@ | python - --repo "$env:REPO" --pr "$env:PR" --ack-label revert-confirmed

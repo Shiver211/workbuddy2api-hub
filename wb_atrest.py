@@ -426,7 +426,7 @@ _WIN32 = {}
 
 
 def _win32():
-    """惰性初始化 Win32 句柄与结构体（在 Linux / macOS 上 import 本模块不应报错）。"""
+    """惰性初始化 Win32 句柄与结构体。"""
     if _WIN32:
         return _WIN32
     import ctypes as C
@@ -592,10 +592,8 @@ def _scan_regions(job):
 def _run_scan(jobs, say):
     """并行跑一批扫描任务，任意一个命中就收工（其余子进程直接杀掉）。
 
-    并行用子进程而不是 multiprocessing：绿色包内置的 Python 是精简发行版，
-    根本没有 multiprocessing 模块，而 multiprocessing 的 spawn 在受限环境里
-    也常常不可用；`sys.executable 本文件 --scan-worker` 这条路在任何 Python 上
-    都能跑。
+    使用 `sys.executable 本文件 --scan-worker` 启动独立扫描进程，
+    与网关使用同一套 Python 环境，便于直接终止未命中的任务。
     """
     if not jobs:
         return []
@@ -713,7 +711,7 @@ def hunt_key(key_id=None, workers=None, log=None):
     """
     if not hunt_supported():
         raise AtRestError("从进程内存回收密钥只支持 Windows（当前系统：%s）——"
-                          "其他平台请手动导入密钥，或改用浏览器登录" % sys.platform)
+                          "请在 Windows 上运行，或改用浏览器登录" % sys.platform)
 
     def say(msg):
         if log:
@@ -821,7 +819,7 @@ def parse_key_text(text):
 
 
 def adopt_key(text, log=None):
-    """手工导入解码密钥（macOS / Linux 上无法回收进程内存时用），返回 32 字节密钥。
+    """手工导入解码密钥（自动回收失败时可用），返回 32 字节密钥。
 
     与 `hunt_key` 同一道闸：落进内存缓存之前必须过 `unwrap_keyblob()` 自检
     （protectorKeyId 对得上、能解出 32 字节主密钥）。因此粘贴错了只会报错，

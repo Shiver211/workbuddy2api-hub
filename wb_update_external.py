@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Reference executor for non-systemd deployments (issue #561).
+"""Reference executor for Windows deployments (issue #561).
 
 The gateway writes request.json; this one-shot script downloads the release
 zip, verifies SHA256SUMS, replaces the managed files, and writes status.json.
@@ -23,7 +23,7 @@ ACTIONS = ("install", "rollback")
 
 
 def read_request(path):
-    """Read and validate one root-owned request, then unlink it."""
+    """Read and validate one update request, then unlink it."""
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     try:
         fd = os.open(path, flags)
@@ -33,10 +33,6 @@ def read_request(path):
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > 2048:
             raise UpdateError("更新请求文件校验失败")
-        if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o022:
-            raise UpdateError("更新请求文件权限过宽")
-        if os.name != "nt" and info.st_uid not in (0, os.geteuid()):
-            raise UpdateError("更新请求文件属主不正确")
         with os.fdopen(fd, "rb", closefd=False) as fh:
             payload = json.loads(fh.read(2049).decode("utf-8"))
     except (OSError, UnicodeError, ValueError, TypeError) as exc:
@@ -56,10 +52,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--request-dir",
                         default=os.environ.get("WB_UPDATE_REQUEST_DIR",
-                                               "/run/workbuddy2api-hub-updater"))
+                                               os.path.join(os.path.dirname(os.path.abspath(__file__)), "updates")))
     parser.add_argument("--repo", default=os.environ.get("WB_UPDATE_REPO", ""))
-    parser.add_argument("--root", default=os.environ.get("WB_APP_ROOT", "/app"))
-    # "app" = only wb_*.py + dashboard.html (image / rootfs deployments);
+    parser.add_argument("--root", default=os.environ.get("WB_APP_ROOT", os.path.dirname(os.path.abspath(__file__))))
+    # "app" = only wb_*.py + dashboard.html (custom Windows layouts);
     # empty = the full portable manifest, the historical behaviour (#573).
     parser.add_argument("--profile",
                         default=os.environ.get("WB_UPDATE_PROFILE", ""))

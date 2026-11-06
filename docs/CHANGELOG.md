@@ -94,7 +94,7 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
   - **按分辨率与素材实测计价**：根据真实扣费反推单价，区分分辨率（768P vs 2K 差异 60%）与参考素材（带素材扣费 2 倍）分档报价，派发前校验积分余额。
   - **参考素材预签名自动转存**：输入图/视频支持 data URL 与公网地址，自动完成上游 COS 预签名转存，阻断本地文件路径以防任意文件读取。
   - **零回归与安全隔离**：媒体模块默认完全关闭（未开启时路由返回 404），不影响普通对话路径。
-- **并发日志原子追加加固（wb_usage_io.py）**：底层追加写入增加 Windows 文件锁（msvcrt.locking）与 POSIX O_APPEND 单系统调用保证，彻底消除高并发写入 usage.jsonl 时的断行与丢行问题。
+- **并发日志原子追加加固（wb_usage_io.py）**：底层追加写入增加 Windows 文件锁（msvcrt.locking），彻底消除高并发写入 usage.jsonl 时的断行与丢行问题。
 - **设置页二级分类胶囊导航（方案 A）**：设置页 36 项配置按功能归类为 6 个胶囊分类（访问与密钥、模型与调度、限额与并发、出口与网络、自动化、计费与运维），单行平滑滚动防折行，窄屏模式自动隐藏重复大纲条，支持偏好持久化。
 
 ## v1.10.5
@@ -158,7 +158,7 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 
 验证：
 - 本地完整测试矩阵：244 个套件全部通过（181 Python + 63 JS，`244 passed, 0 failed, 0 skipped`）。
-- GitHub Actions 跨平台 CI（Ubuntu 3.9 / Ubuntu 3.12 / Windows 3.12 / revert guard）全部通过。
+- GitHub Actions 的 Windows 3.12 与 revert guard 检查通过。
 - 发布工程套件 `_test_release_engineering.py` 与发布资产套件 `_test_release_assets.py` 全部通过。
 
 ## v1.9.2
@@ -192,7 +192,7 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 验证：
 
 - 本地完整矩阵：`231 passed, 0 failed, 0 skipped`（63s 全绿）。
-- GitHub Actions CI：Ubuntu 3.9、Ubuntu 3.12、Windows 3.12 与 revert guard 均通过。
+- GitHub Actions CI：Windows 3.12 与 revert guard 均通过。
 - 发布工程套件 `_test_release_engineering.py` 与发布资产套件 `_test_release_assets.py` 全部通过。
 
 ## v1.8.0
@@ -210,7 +210,7 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 验证：
 
 - 本地完整矩阵：`226 passed, 0 failed, 0 skipped`。
-- GitHub CI：Ubuntu 3.9、Ubuntu 3.12、Windows 3.12 与 revert guard 均通过。
+- GitHub CI：Windows 3.12 与 revert guard 均通过。
 - 发布前补跑发布工程与资产套件、`py_compile`、`git diff --check` 与干净检出检查。
 - 本机没有真实账号池，**未执行网关到 WorkBuddy 上游的真实模型冒烟**；#645 的上游证书恢复与真实账号连登 `0 -> 1` 仍需部署方复测。
 
@@ -224,7 +224,7 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 - **Responses 流式首段工具参数增量**（#632）：首个 `tool_calls` 分片携带的参数现在会在 `output_item.added` 后发出，并且只累计一次；覆盖部分 / 完整 / 空首段、交错调用和 custom 工具，避免下游拼接与最终 `arguments` 不一致。
 - **每日活跃改为预算 + 有序候选序列**（#635）：旧的六个互相覆盖的旋钮收敛为单账号预算（默认 600 秒，0 = 不限）与有序模型候选（至少两轮）。时段改为到期窗口判定，新增启动补跑、网页会话卡死收尾、登记表上界与预算内退避；旧首选模型与已启用回退组合会迁移到新列表。
 - **429 模型窗口跨重启恢复**（#638）：账号加载时从 `model_windows.json` 恢复未到期的模型冷却，过期窗口不挂，损坏状态文件不阻断加载；同时清理冷却起始时刻残留。
-- **维护与文档**：README 顶部新增低频维护公告、上游收紧与账号责任说明，同步版本徽章、下载入口和本版记录；版本号同步到 `wb_proxy.py`、OpenWrt `PKG_VERSION` 与 README。
+- **维护与文档**：README 顶部新增低频维护公告、上游收紧与账号责任说明，同步版本徽章、下载入口和本版记录；版本号同步到 `wb_proxy.py` 与 README。
 
 验证：本地 `225 passed, 0 failed, 0 skipped`。本机无真实账号池，未执行到 WorkBuddy 上游的真实模型冒烟。
 
@@ -257,7 +257,6 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 - **手机端账号卡出口与权重同行**（#587）：出口下拉与权重各占半行、两个 select 统一 34px 高；积分与请求铺满整行，积分格不再把列标签挤进 `credit-meta`。
 - **窄屏统计条让积分消耗独占一行**（#588）：≤860px 时把「积分消耗」与「请求成功率」对调，积分消耗占满整行，副行的估算价值不再被省略号截断。
 - **启动时补一次更新检查**（#589）：`tag` 与发布页只在内存里，重启后 24 小时窗口又锚在上一次尝试上，面板会停在「有新版本但装不了」，最长等一天。后台线程第一次 pass 带 `startup=True`，绕过 24h 窗口但仍受开关与每小时预算约束（`STARTUP_CHECK_WINDOW_SECONDS` / `STARTUP_CHECKS_PER_WINDOW = 6`），预算账本随 `update_check` 落盘；稳态仍是 24 小时一次，关掉每日检查则一个请求都不发。
-- **便携更新保留 unix 权限位**（#582）：`safe_extract()` 用裸 `open()` 写暂存文件，zip 里 755 的 `start-wb-proxy*.sh` 落盘变 644，重启那步 `Popen()` 报 EACCES 并回滚——macOS / Linux 的便携更新每次都会命中。现在按 zip 条目的 `external_attr` 还原模式，无 unix 属性不加执行位，setuid / sticky 不还原，Windows 不受影响。
 - **API Key 的账号白名单与并发上限能落盘了**（#592）：`_handle_settings_save` 重建 key 条目时漏了 `accounts` 与 `concurrency_limit`，`set_api_keys()` 读不到就回落成 `[]` / 0，面板勾选的账号保存后不生效。现在与 `realm` / `models` / `name` / `enabled` 同一规则：补丁没提到就沿用已存值。
 
 ## v1.7.28
@@ -282,8 +281,6 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 两个已确认的修复：assistant 历史里的身份句 / 品牌词指纹，以及镜像部署升级写进便携包专用文件。套件 208 个（155 Python + 53 JS）。
 
 - **11-128：assistant 历史也清洗，品牌词缩成 `DeepSeek`**（#574）：同一句 `You are an AI agent powered by DeepSeek Harness.` 放在 assistant 里 400/400/400、放在 user 里 200/200/200，说明身份句的作用域漏了 assistant；`DeepSeek Harness` 与 GUI 描述句（`this page` / `this GUI` / `this app`）连续出现时仍会命中，单独品牌词放行。现在 `sanitize_messages()` 的 identity 作用域扩到 system / developer / assistant，并在这一层把散文里的 `DeepSeek[ \t]+Harness` 缩成 `DeepSeek`。连字符 / 下划线形式（`deepseek-harness`、`deepseek_harness`、`/opt/deepseek-harness/app`）与 user / tool 内容保持原样。新增 5 项断言。
-- **镜像 / rootfs 部署升级不再写便携包专用文件**（#573）：release manifest 新增 `profiles.app`（`wb_*.py` + `dashboard.html`）。非便携包布局（清单与代码同层）的 `request.json` 会带上 `profile: "app"`，执行者据此只替换应用层：`start-wb-proxy*`、`ops/aliyun/*`、`README.md`、`LICENSE` 与 `pricing/pricing.json` 不再落到 `/app`。便携包布局（清单在包根、代码在 `wb-proxy/`）不带档位，行为不变；旧执行者忽略该字段，行为也不变。备份把本次实际管理的 `files` 记进 `backup.json`，按档位备份的目录仍能通过完整性校验并回退。新增 7 项 Python 断言与 3 项 manifest 断言。
-
 ## v1.7.25
 
 四笔社区改动：DSH GUI 指纹、跨出口回退、账号表排序续行、更新备份与版本回退。套件 208 个（155 Python + 53 JS）。
@@ -291,25 +288,25 @@ CodeArts 工具归一化与空函数修复（#750 / #752）、配置并发安全
 - **11-128：DSH GUI 描述段的句尾语序**（#579）：国内版 system 提示里的 GUI 描述段 `… the DeepSeek Harness Web GUI whose URL the runtime context names.` 紧跟 `When the user refers to "this page" …` 会命中 11-128；现在只把 A 句尾改成 `whose URL is named in the runtime context.`，品牌名与句意不变，作用域仍是 system / developer。新增 8 项断言。
 - **跨出口回退：国际版限流 → 国内版（默认关闭）**（#564）：国际版整池被限流 / 24h 窗口用满 / 整池冷却 / 空池时，把同一请求在同名国内版出口重放一次；只对两边都提供的模型、单向、显式指定 realm 的请求不回退，403 11140 不重放。设置页新增开关。新增 16 项单测。
 - **修复账号表排序把冷却 / 达限胶囊拆离账号行**（#568）：`applyTableSort()` 现在按「主行 + 紧跟的 `tr.cool-row` 续行」成组排序；表头列类型推断仍只看数据行。新增 JS 断言。
-- **保留历史版本备份 + 面板版本回退**（#571）：更新成功后保留 `updates/backup-<目标版本>/`，份数由设置控制（0–3，默认 1；0 = 不留备份、回退不可用）。设置页新增「版本回退」卡片，按本地备份恢复、不下载旧包；回退前校验完整性，回退后校验 `Server: wb-proxy/<版本>`，失败自动恢复到回退前版本。`request.json` 新增 `action`（`install` / `rollback`），便携版、外部执行者与 systemd 服务都认；旧执行者会把 rollback 当「重装该 tag」。新增 26 项 Python 断言与 1 个 JS 套件。
+- **保留历史版本备份 + 面板版本回退**（#571）：更新成功后保留 `updates/backup-<目标版本>/`，份数由设置控制（0–3，默认 1；0 = 不留备份、回退不可用）。设置页新增「版本回退」卡片，按本地备份恢复、不下载旧包；回退前校验完整性，回退后校验 `Server: wb-proxy/<版本>`，失败自动恢复到回退前版本。`request.json` 新增 `action`（`install` / `rollback`），便携版与外部执行者都支持；旧执行者会把 rollback 当「重装该 tag」。新增 26 项 Python 断言与 1 个 JS 套件。
 
 ## v1.7.24
 
-非 systemd 部署的面板一键更新通道（#561）：`install_enabled()` 不再只认 systemd unit；部署方可以用外部执行者轮询 `request.json`，网关仍只写请求、不碰自己的代码。套件 205 个（153 Python + 52 JS）。
+外部执行器的面板一键更新通道（#561）：部署方可以用外部执行者轮询 `request.json`，网关仍只写请求、不碰自己的代码。套件 205 个（153 Python + 52 JS）。
 
-- **外部执行者通道**（#561）：`WB_UPDATE_INSTALL_ENABLED=1` + `WB_UPDATE_REQUEST_DIR` + `WB_UPDATE_EXECUTOR=external`（或目录里的 `executor.json`）即可让面板「安装更新」按钮可用；systemd 路径不变。
-- **`request.json` 扩展**：除 `tag` / `version` / `requested_at` 外，新增 `pid` / `port` / `root`，供外部执行者停进程、探针和替换目录；systemd 执行者忽略额外字段。
+- **外部执行者通道**（#561）：`WB_UPDATE_INSTALL_ENABLED=1` + `WB_UPDATE_REQUEST_DIR` + `WB_UPDATE_EXECUTOR=external`（或目录里的 `executor.json`）即可让面板「安装更新」按钮可用。
+- **`request.json` 扩展**：除 `tag` / `version` / `requested_at` 外，新增 `pid` / `port` / `root`，供外部执行者停进程、探针和替换目录。
 - **参考执行者** `wb_update_external.py`：读取并校验 request（属主 / 权限 / 大小，读完即删），下载 release zip + `SHA256SUMS`，校验后按 manifest 备份 / 替换，停止网关，等 supervisor 拉起，探针 `/health`，失败回滚；启动时如果发现上次状态仍是 `applying` 等活跃状态且有备份，会先自动回滚（供 pre-start hook 使用）。
-- **边界**：只替换 manifest 的 `files`，`accounts/` / `usage/` 不动；应用目录不可写会在下载前报「应用目录不可写」；不替换内置 `python/`。
+- **边界**：只替换 manifest 的 `files`，`accounts/` / `usage/` 不动；应用目录不可写会在下载前报「应用目录不可写」。
 - **测试**：`tests/_test_portable_update.py` 扩到 16 项，覆盖外部通道注册、`request.json` 字段、执行者读取 / 删除、无 start 重启模式、半途更新恢复。
 
 ## v1.7.23
 
-Windows 便携版支持面板一键更新（#560）：不再要求 systemd unit；面板检测到新版本后，由独立 helper 下载 zip、校验 SHA256SUMS、停服、按 `release-manifest.json` 替换受管文件、重启，失败自动回滚。套件 205 个（153 Python + 52 JS）。
+Windows 便携版支持面板一键更新（#560）：面板检测到新版本后，由独立 helper 下载 zip、校验 SHA256SUMS、停服、按 `release-manifest.json` 替换受管文件、重启，失败自动回滚。套件 205 个（153 Python + 52 JS）。
 
-- **便携版一键更新**（#560）：新增 `wb_update_portable.py` 与 `wb_update_apply.py`。`install_enabled()` 在便携包（存在 `release-manifest.json`、`wb_update_apply.py`、`python/python.exe`）里返回 true，面板按钮不再因缺少 systemd unit 而禁用。
+- **便携版一键更新**（#560）：新增 `wb_update_portable.py` 与 `wb_update_apply.py`。`install_enabled()` 在便携包（存在 `release-manifest.json`、`wb_update_apply.py`）里返回 true，面板可直接调用独立更新助手。
 - **更新流程**：下载 `workbuddy2api-hub-vX.Y.Z.zip` 和 `SHA256SUMS` → 校验 → 解包（拒绝 `..` / 绝对路径 / 符号链接）→ 校验 manifest 与 `wb_proxy.py` 版本 → 备份受管文件 → 停止网关 → 替换 → 按原启动模式（静默 / 可见 / LAN）重启 → 轮询 `/health`；失败时恢复备份并重启旧版本。
-- **边界**：只替换 `release-manifest.json` 的 `files`，`accounts/`、`usage/` 等受保护目录不动；不替换内置 `python/` 运行时（运行时升级仍需手动覆盖）；状态写入 `updates/status.json`，面板沿用现有轮询。
+- **边界**：只替换 `release-manifest.json` 的 `files`，`accounts/`、`usage/` 等受保护目录不动；状态写入 `updates/status.json`，面板沿用现有轮询。
 - **测试**：新增 `tests/_test_portable_update.py`（10 项），覆盖 URL / 校验、路径穿越、版本校验、备份 / 替换 / 回滚、helper 启动参数与 bridge 状态；`release/portable.txt` 已加入两个新模块，运行时契约补 `posixpath` / `signal` / `zipfile`。
 
 ## v1.7.22
@@ -349,7 +346,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **API Key 支持允许账号白名单**（#544）：Key 新增 `accounts`，调度器只从名单内取号，会话粘性绑定不能绕过，`/u/<ref>` 定址到名单外账号返回 403；留空保持不限制，旧 Key 行为不变。
 - **只列出可用模型（默认关闭）**（#546）：`/v1/models` 只返回池里至少有一个账号能服务的模型；国际版 PRO ONLY 模型只有在池里存在付费账号时才列出，`ready()` 同时拒绝把它派给免费账号。
 - **思考档位映射（默认开启）**（#542）：请求的 `reasoning_effort` 不在模型目录声明的档位里时，改写为默认档位（`defaultEffort` → 固定档位 → 支持列表首项）；目录声明 `canDisableThinking: false` 时 `off` / `none` 也回落。可关闭后原样透传。
-- **全局提示词支持面板在线编辑**（#547）：`prompt.text` 优先于原有的 `prompt.file`，可选追加到 system 或替换 system，保存后即时生效，不必再往容器里挂文件；默认透传不改写。
+- **全局提示词支持面板在线编辑**（#547）：`prompt.text` 优先于原有的 `prompt.file`，可选追加到 system 或替换 system，保存后即时生效，无需手工编辑提示词文件；默认透传不改写。
 - **出站身份版本号可查看与修改**（#554）：面板列出 WorkBuddy 国际 / 国内、桌面内置 CLI、VSCode、CodeBuddy CLI、SDK 与 Node 的当前值和默认值，修改必须输入面板密码。国内版桌面端按 Go 版 2026-10-18 实跑对齐到 5.8.3 / CLI 2.161.0。
 - **11-128 身份句动词搭配补全**（#550）：动词表从 `powered by` / `built on` 两种扩到 7 种（`built by` / `created by` / `developed by` / `made by` / `trained by` 与省略名词的 `You are powered by …`），不引入新判据；`You are free to use tools built by …` 这类分词修饰宾语的句子保持不改写。
 
@@ -463,7 +460,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
   默认请求体 gzip（`RequestBodyGzip=true` → `executeByMode` →
   `createCustomFetch` 压缩），本版启用；非企业号没有真实设备 token 时按官方
   失败态发 `X-Device-Token-Error: sdk_not_initialized`（不伪造 token）。
-- **阿里云 systemd 部署支持手动安装稳定版**：设置页可从配置的 fork Release 安装新版本；更新包必须通过 `SHA256SUMS` 与 `release-manifest.json` 校验，账号与用量目录列为保护路径。网关只提交版本号，root-owned systemd 更新服务负责备份、替换、重启与健康检查；失败会恢复程序文件。每日检查仍默认关闭，打开后也只检查、不自动安装。
 - **风控限制 403（code 11140）不再换号连坐：默认停手、限制持久化、整池暂停**（#422、#425）：上游对国际版账号的风控在 2026-10-15/16 之后明显收紧，账号级限制的正文是 `403 {"code":11140,"msg":"request illegal","displayMsg":"账号存在异常行为，已被限制使用"}`；社区复盘（[Zhengyuuuui/workbuddy2api](https://github.com/Zhengyuuuui/workbuddy2api/blob/main/doc/incident-postmortem-and-hardening-checklist.md)）给出的处置红线是「看到 11140 立即停手，解封前严禁换号继续打同一设备——设备指纹会连坐」。旧实现在 11140 上冷却该号后立刻换下一个号继续同一请求，一个请求最多遍历整个池子（#422 用户实测 7 个号在一次任务里全被封），而且冷却只存在内存里，重启 / 刷新 token / 「一键测试」都会把它清掉。现在：
   - **默认不再跨号重试**：第一个账号被限制就停手，把原因交给客户端，下一次请求自然落到别的账号；需要旧行为时设 `WB_RESTRICTED_403_ROTATE_MAX`（默认 0）。
   - **限制期限持久化**：账号档案新增 `restrictedUntil`（2 小时），重启 / 换身分 / 刷新凭证 / 一键测试都不再把它放回池子；只有真正成功一次（说明上游已解除）才清。
@@ -475,13 +471,12 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 ## v1.7.13
 
-积分安全、便携部署与面板行为修复：请求结束后按上游回包的真实 credit 立即扣减缓存余额，`reserve_credits` 不再在两次刷新之间失效（#442）；便携包补回 `console_tail.py` 与 `pythonw.exe`，静默启动不再一闪而过（#416）；日志按钮改为跨平台新窗口打开运行日志（#427）；关闭服务用 `/health` 复核，容器或守护进程自动拉起时不再谎报成功（#426）；OpenWrt 包补齐 ssl / sqlite3 / codecs 依赖（#419）；补全 atrest 提示的英/正体词条并修正 README 徽章 alt（#415）。套件 160 个（117 Python + 43 JS）。
+积分安全、便携部署与面板行为修复：请求结束后按上游回包的真实 credit 立即扣减缓存余额，`reserve_credits` 不再在两次刷新之间失效（#442）；便携包补回 `console_tail.py`，静默启动不再一闪而过（#416）；日志按钮改为新窗口打开运行日志（#427）；关闭服务用 `/health` 复核，守护进程自动拉起时不再谎报成功（#426）；补全 atrest 提示的英/正体词条并修正 README 徽章 alt（#415）。套件 160 个（117 Python + 43 JS）。
 
 - **请求结束立即扣减余额，低积分护栏不再失效**（#442）：`reserve_blocked()` 以前只读上一次 `fetch_credits()` 的缓存值，而刷新器每 30 分钟只刷一个号，48 个号的池子刷完一轮要 24 小时。现在每条完成的请求都会按上游回包里的 `credit` 扣减内存余额（加锁、下限 0），并同步 `used` 与百分比；后台刷新回来再校正。串行场景下 `reserve_credits` 立即生效，不会再出现「53 分钟扣 709 分、护栏全程没拦住」。
-- **便携包补回静默启动依赖**（#416）：`release/portable.txt` 新增 `console_tail.py`，精简运行时不再删除 `pythonw.exe`。双击 `start-wb-proxy*.bat` 后服务在后台静默运行、日志窗口正常弹出，不再「窗口一闪而过」；发布工作流的冒烟检查也会断言这两个文件在包内。
-- **日志按钮跨平台可用**（#427）：面板顶栏的眼睛按钮不再让服务端 `spawn` 进程，改为 `window.open('/dashboard?tab=logs')` 在新窗口打开运行日志。Windows / macOS / 容器走同一条路，不会再出现「Linux 上每次都提示已关闭」；`/console/toggle` 保留为兼容端点并返回 `mode=web`。
-- **关闭服务不再把失败渲染成成功**（#426）：点击电源按钮后轮询 `/health`，只有端口真的不再应答才标记「已关闭」；容器或守护进程把进程重新拉起时会如实提示「停止请求已发送，但服务仍在运行」，按钮也不会被永久禁用。
-- **OpenWrt 依赖补齐**（#419）：`DEPENDS` 增加 `python3-openssl`、`python3-sqlite3`、`python3-codecs`，避免安装后因缺少 ssl / sqlite3 / `encodings.idna` 而启动失败或域名解析报错。
+- **便携包补回静默启动依赖**（#416）：`release/portable.txt` 新增 `console_tail.py`。双击 `start-wb-proxy*.bat` 后服务在后台静默运行、日志窗口正常弹出，不再「窗口一闪而过」；发布工作流的冒烟检查也会断言该文件在包内。
+- **日志按钮使用浏览器窗口**（#427）：面板顶栏的眼睛按钮不再让服务端 `spawn` 进程，改为 `window.open('/dashboard?tab=logs')` 在新窗口打开运行日志。`/console/toggle` 保留为兼容端点并返回 `mode=web`。
+- **关闭服务不再把失败渲染成成功**（#426）：点击电源按钮后轮询 `/health`，只有端口真的不再应答才标记「已关闭」；守护进程把进程重新拉起时会如实提示「停止请求已发送，但服务仍在运行」，按钮也不会被永久禁用。
 - **i18n 与 README 小修**（#415）：补上 `当前系统不支持从进程内存回收密钥。` 的英文与正体词条；README 徽章 `alt` 跟实际版本对齐。
 
 ## v1.7.12
@@ -594,11 +589,9 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 ## v1.7.4
 
-系统健壮性与多平台全面增强：新增可选的 SQLite 日志落库与模块级别过滤；macOS/Linux 支持手工导入桌面端解码密钥与一键配置权限安全强化（0600）；修复用量聚合旧小时桶剪裁误废 checkpoint（首屏恢复至 10ms 级）；面板首屏加载解耦成长任务并支持独立账号页切版本；模型目录自动隐藏上游未定倍率模型并修正 glm-5.3-flash 纯文本标注；修复 /agents/apply 无效 key 抛 NameError（#352）。
+系统健壮性增强：新增可选的 SQLite 日志落库与模块级别过滤；修复用量聚合旧小时桶剪裁误废 checkpoint（首屏恢复至 10ms 级）；面板首屏加载解耦成长任务并支持独立账号页切版本；模型目录自动隐藏上游未定倍率模型并修正 glm-5.3-flash 纯文本标注；修复 /agents/apply 无效 key 抛 NameError（#352）。
 
 - **可选的本地日志落库与级别模块分类**（#338）：设置页新增「本地日志落库（SQLite）」开关（默认关闭），开启后写入 `usage/logs.sqlite3`，重启崩溃仍可回看；支持按天数/体积/行数三维保留轮转；重写日志级别与模块推断逻辑（补充丰富中文关键词与细分模块，错误日志补充账号）。
-- **macOS / Linux 凭据导入与多平台适配**（#350）：扫描到桌面端加密凭据后支持在前端弹窗手工输入或导入 keyblob 密钥，解决非 Windows 无法读内存导致账号数恒为 0 的问题；启动脚本与 README 澄清便携包 Python 运行时为 Windows 专属，macOS/Linux 回退系统环境。
-- **一键配置客户端凭据权限强化**（#349、#345）：写出客户端配置与凭据文件在 POSIX 系统下强制指定为 `0600`（当前用户独占读写），修复 DeepSeek Harness 等客户端在 macOS / Linux 启动时安全校验失败的问题。
 - **修复用量分析 Checkpoint 误判废**（#342）：修复旧天小时桶被剪裁时导致 `_usage_cache_analytics_day_ok` 校验失败整份判废的问题，首屏从全量重折（2~3 秒）恢复至缓存秒开（~10ms）。
 - **面板首屏加载性能与独立账号页切版本**（#346、#347）：
   - 启动链解耦：进入看板首屏时，国内版耗时约 2 秒的成长任务接口不再阻塞当前页签的关键 KPI 渲染；
@@ -611,7 +604,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 ## v1.7.3
 
-性能飞跃与协议闭环：SSE 流式按块处理与出站 TLS 连接池化（高并发流式 CPU 消耗降低 76%、系统调用降低 98%）；闭环 Codex 0.162+ 命名空间内自由格式工具调用；面板上线超长窗口限高与吸顶；设置页开放上游响应头超时与国际版每日活跃模型指定；修复 macOS 启动脚本因换行符报 bad interpreter 与用量索引缓存时序问题。
+性能飞跃与协议闭环：SSE 流式按块处理与出站 TLS 连接池化（高并发流式 CPU 消耗降低 76%、系统调用降低 98%）；闭环 Codex 0.162+ 命名空间内自由格式工具调用；面板上线超长窗口限高与吸顶；设置页开放上游响应头超时与国际版每日活跃模型指定；修复用量索引缓存时序问题。
 
 - **流式链路系统级性能优化：SSE 逐行读取与写出改为按块处理，出站 TLS Context 进程级复用**（#333）：
   - **按块读取**：新增 `iter_sse_lines()`，以 64 KiB 块一次性取回底层 socket 缓冲并在内存切行，取代原先每一行一次 read() 系统调用的模式，大幅降低多并发线程争夺 Python GIL 的交接开销；
@@ -624,8 +617,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **国际版每日打卡优化**（#319、#325）：
   - 网页通道打卡失败时如实记录为失败，不再误标为成功；
   - 网页打卡会话补发 `session/set_model`，确保打卡真正生效于轻量模型，并可在设置页自定义打卡所用的轻量模型。
-- **最近请求索引改走安全尾部直读**（195753c）：默认关闭易受容器时序影响的 `usage-recent-index.json` 缓存索引，改走尾部流式直读，确保新请求永远绝对实时显示且杜绝卡在旧时间。
-- **修复 macOS 启动脚本换行符与执行权限**（#329）：Release 便携包打包阶段对 `*.sh` 与 `*.command` 强制归一化为 LF 换行并赋予 `0o755` 可执行权限，彻底解决 macOS 双击脚本报 `bad interpreter: /bin/bash^M` 的问题；仓库根目录新增 `.gitattributes` 统一跨平台换行规范。
+- **最近请求索引改走安全尾部直读**（195753c）：默认关闭易受时序影响的 `usage-recent-index.json` 缓存索引，改走尾部流式直读，确保新请求永远绝对实时显示且杜绝卡在旧时间。
 - **日志与用量套件稳定性增强**（#317、#320、#321）：出口瞬时 hiccup 日志补充底层具体断连原因；修复用量与限高测试用例在部分环境下的跨用例残留与 CI 偶发抖动。
 
 # 版本更新记录 (Changelog)
@@ -667,7 +659,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **新增「出口级瞬时失败退避」（默认关，issue #271）**：账号级熔断把「连续 3 次硬失败」记在**账号**头上（30 分钟起、翻倍到 6 小时）。当失败来自出口 / 链路的**瞬时抖动**而不是账号本身时，这个口径会把一次抖动记到每个共享该出口的账号头上——现场实测 4 小时 196 次 `URLError` 陆续熔断 13 个账号（最长窗口约 3 小时），期间池子几乎空掉。打开 `egress_backoff_enabled` 后，**传输类失败与 502/503/504** 不再喂账号的 `fails` / `degrade_count`，改记在**出口**上：同一个出口的账号共用一个计数器，退避降到**秒级**（1 秒起、翻倍、封顶 15 秒、带抖动），任一次成功即清零。出口身份用 `wb_upstream_pool.egress_key()`——与连接池键同一口径 `(scheme, host, port, 代理串)`，并把「配了代理但命中系统旁路」折叠成直连，所以「直连」本来就是一个共享出口。**500 仍留给账号**（可能是与凭证相关的真实故障，需要再看一眼）；401/403/429 各走原有路径。单次请求的睡眠封顶 5 秒（`EGRESS_SLEEP_MAX`），共享计数器仍让并发请求一起变慢。
   - 开关缺失键读作**关**：它改变的是派发路径上的失败归账与退避尺度，老安装保持原样（传输错误仍喂账号熔断）。
   - 新增 `wb_egress.py` 与 `tests/_test_egress_backoff.py`：钉住出口身份与池键同口径、旁路折叠、秒级阶梯与封顶、共享计数器、成功清零、静默窗口重开阶梯，以及开关开 / 关两种口径下账号计数的差异（含 500 仍记账号）。
-  - `release/portable_runtime.py` 的 `REQUIRED_FILES` 补 `Lib/random.py`（`wb_egress` 用它做退避抖动）；`release/portable.txt` 加 `wb_egress.py`。
+  - `release/portable.txt` 加 `wb_egress.py`。
 - **数据看板：token 紧凑单位、缓存 token、总计花费、延迟自动单位**（#287）：两张 token 卡的大数字与输入/输出/思考明细改为紧凑单位（`fmtCompact`：<1 万精确千分位，≥1 万 K、≥100 万 M、≥10 亿 B，小数位随量级收缩、尾零去掉）；明细行新增「缓存」一段，缓存命中率卡副行带缓存 token 数；「API 等价花费」卡副行给出总计（全部历史）；KPI 的平均首字延迟 / 平均耗时与最近请求表的耗时 / 首字列改用自动单位；账号透视表与 Key 表的 token 列同步。新增 `tests/_test_token_units.js`。
 - **数据看板：剩余积分分「总剩余 / 可用」两个维度**（#286）：区域卡片的大数字保持「总剩余」（全部账号之和，含停用账号），副行新增「可用 N」——只算启用且未触发保留积分 / 日限额 / 积分限额护栏的账号（与旁边的 N/M 账号计数同一个口径）。没有积分数据时两个维度都显示 —，不会把可用误显示成 0。新增 `tests/_test_credits_dimensions.js`。
 - **修复：上游风控限制 403（code 11140）不再被当成内容审核**（#288）：账号被上游限制时（正文「账号存在异常行为，已被限制使用」/「restricted due to unusual activity」），原先落进内容审核分支——降级提示词重试一次后就把错误透传给客户端，被限制的账号既不冷却也继续被选用，同一条对话被一次次打死。现在按账号级限制处理：冷却该账号 2 小时并轮到下一个账号，上游解封后自愈；池里只剩一个账号时仍把限制原因交给客户端。内容审核 403 的降级路径不变。顺带把重试循环的 5xx 从固定清单（500/502/503/504）放宽为一切 >= 500——上游自定义的 550 这类原先会直接甩回客户端，现在按瞬时故障轮转。新增 `tests/_test_restricted_403.py`（6 项）。
@@ -675,9 +667,9 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **本地网络工具（`web_search` / `web_fetch`）改成多引擎自动轮换**（[PR #290](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/290)）：旧的单引擎实现只走 DuckDuckGo HTML 版，上游对出口 IP 限流、返回反爬页时，解析不到结果就会把失败误报成「查无结果」，同一网关上的对话都只看到搜不到。现在同一句查询会按 `duckduckgo -> bing -> wikipedia -> stackoverflow -> google news` 自动轮换（只用国际来源；`WB_WEB_ENGINES` 可覆盖顺序与子集），常规引擎（DuckDuckGo / Bing）接手时结果与平常完全一致、模型无感；换成 Wikipedia / Stack Overflow / Google News 这类非常规来源时，结果明确带上 `Source: ...` 并要模型告知用户出处；全部引擎都不可用才回 `web search is temporarily unavailable`（附各家原因，并要求模型不要重试同一句、直接告知使用者）。
   - 「真的没有结果」与「被限流／拦截」分开分类：HTTP 202/403/429 或反爬页（DDG anomaly 页等签名）判为被挡，引擎进冷却（`WB_WEB_COOLDOWN`，默认 600 秒；其他引擎健康时跳过冷却中的，其他全挂时再补试一轮）；查询结果 TTL 快取（`WB_WEB_CACHE_TTL`，默认 600 秒；空结果 120 秒）＋同 key 併发去重＋对外最小间隔（`WB_WEB_MIN_INTERVAL`，默认 0.5 秒）＋单次搜寻总预算（`WB_WEB_BUDGET`，默认 25 秒）。
   - `web_fetch` 一并硬化：只收文本型内容（PDF 等二进位直接回明确错误）、支援 gzip 压缩、4 MB 读档上限、charset 依标头与 `<meta>` 推断、结果进快取；URL 守卫除原有字面检查外，会解析 DNS 并核对每个位址都是公网（防 DNS rebinding 把 fetch 指进内网）；新增 `WB_WEB_TOOLS_PROXY` 给这组工具单独指定出口代理。
-  - 多引擎轮换、冷却与失败分类写进看板日志（`tag=webtools`）；测试：`tests/_test_local_web_tools.py` 从 68 项扩到 120 项（轮换、来源标注、冷却、快取与节流、失败分类、抓取闸门、DNS/IP 守卫，全部离线跑）；`release/portable_runtime.py` 的运行时契约补 `Lib/gzip.py`。
+  - 多引擎轮换、冷却与失败分类写进看板日志（`tag=webtools`）；测试：`tests/_test_local_web_tools.py` 从 68 项扩到 120 项（轮换、来源标注、冷却、快取与节流、失败分类、抓取闸门、DNS/IP 守卫，全部离线跑）。
 - **`/usage/perf` 加增量样本（稳态最大项）+ `_tail_lines` 逐块读取**：perf 是面板轮询里唯一没有增量的聚合——每次 TTL 过期都重读日志末尾 `sample` 行、逐行 `json.loads`、把五个数值往全局与三层模型桶各 append 一遍，再对每个桶排序求分位；真机 558ms/次、TTL 15 秒，面板开着就每 15 秒付一次。现在按 `(sample, realm, 窗口)` 各记一份**环形样本**（最近 `sample` 行 + 每行对聚合的贡献），TTL 过期只把新追加的行并进来、把滑出样本的行撤出去，0 新字节时连渲染都省掉；位置校验（`offset` + `(size, dev, ino)` + offset 前 64B tail 签名）不过才从日志尾部重建。本机（11.7MB / 21445 行）`perf_stats`：冷 220~250ms 不变，**TTL 过期后的重算 190~280ms → ~1ms**；`sample=20000` 的冷扫 800ms → 660ms。口径未动：`sample` 仍是"最近 N 行"（不是时间窗）、`sample_capped` 仍表示 tail 截断、realm/窗口预过滤照旧、分位始终从原始样本算（D6）、`sampled`/`sample_from`/三层桶的内容与顺序与整段重扫逐字节一致；状态**不落盘**（重启付一次冷扫），每进程最多留 4 份（面板实际只用两三个键；`sample=5000` 单份约 3.4MB）。顺带把 `_tail_lines` 的逐行循环收成"整块过滤 + 一次 extend"（字节口径不变，20000 行读取 1.2 倍左右），并在新套件里用 `open`/`json.loads` 计数桩钉住"0 新字节不解析、N 行只解析 N 行、读入字节数就是尾部那一段"。新增 `tests/_test_perf_incremental.py`。
-- **用量两处小提速（输出逐字节不变）**：窗口序列的「credit 前 50 条」从「整窗计费行全量 append + 整份排序 + 切前 50」改成大小 50 的有界堆——进不了前 50 的行不再建载荷字典，20 万计费行的选取 170ms → 75ms（at 倒序、相同 at 保持日志顺序的语义与切片路径一致）；请求路径不再维护模块级 `_usage` 里没人读的 requests/ttft/gen/wall/by_model 累加（全仓唯一读者是快照的 `started`），每请求省一次全局锁与约 6µs 的加法，快照的 `started`/`since` 照旧。`import heapq` 已加进便携运行时清单（`release/portable_runtime.py`）。
+- **用量两处小提速（输出逐字节不变）**：窗口序列的「credit 前 50 条」从「整窗计费行全量 append + 整份排序 + 切前 50」改成大小 50 的有界堆——进不了前 50 的行不再建载荷字典，20 万计费行的选取 170ms → 75ms（at 倒序、相同 at 保持日志顺序的语义与切片路径一致）；请求路径不再维护模块级 `_usage` 里没人读的 requests/ttft/gen/wall/by_model 累加（全仓唯一读者是快照的 `started`），每请求省一次全局锁与约 6µs 的加法，快照的 `started`/`since` 照旧。
 - **`/usage/recent` 的行偏移索引**：分页从「从日志尾部往回读」改成按索引直接定位。新落盘 `usage/usage-recent-index.json`（每 64KB 记一条行边界 + 到该处的累计记录数，4 万行日志 4.5KB），页数标签与页内容都从同一次扫描里取；位置校验复用聚合那套（`key` + 64B tail 签名），截断 / 替换 / 同尺寸重写一律作废重扫，索引答不了（半行、坏字节、池没就绪）就整段退回原实现，两条路的输出逐字节相同。本机（11.7MB / 21445 行）：第 1 页读 100KB（旧 256KB）、第 200 页读 128KB（旧 11.0MB）、空页读 128B（旧 11.7MB）；带索引重启后的第一页 ~15ms（旧冷 133ms）。索引只在有推进时落盘（256KB / 900s 节流），首次构建要过一遍日志（约等于一次解析扫描）。开关 `WB_RECENT_INDEX=0`（另见 `WB_RECENT_INDEX_MIN_BYTES` / `WB_RECENT_INDEX_MIN_SECONDS`）。新增套件 `tests/_test_recent_index.py`。
 - **行级结果记忆：日键与定价跨视图只算一遍**：`_local_day_key`（strftime）在 snapshot / analytics / series 三次独立扫描里各算一遍，`cost_for_row` 在 snapshot + analytics 各算一遍——本机 21445 行日志上分别是 63065 次与 42173 次真算。新增两张**进程内有界**的记忆表（日键按 `at`、定价按 `(model, cost_policy, at, prompt_tokens, cached_tokens, completion_tokens)`，键都不用行对象 id；定价条目带价表代次，换代整体作废；时区被 `tzset()` 换过则日键表作废；`WB_ROW_MEMO_MAX` / `WB_ROW_COST_MEMO_MAX` 可调，0 = 关）：本机三视图冷启动合计 **4269ms → 3609ms（-15.5%）**、指标页（第二视图）**1802ms → 1231ms（-32%）**，日键真算 -66%、定价真算 -39%。记忆只存「这行折进哪天/值多少钱」两个标量，五个聚合的折叠状态一行未动；不落盘、不共享状态。
 - **聚合状态 checkpoint 一类一份：只跑 `/usage` 的进程不再解析全部状态**：落盘布局从「一个文件装五份」（`usage-aggregate-cache.json`，schema 3）拆成「一类一份」（`usage-aggregate-cache-<kind>.json`，schema 4），每份自带位置/指纹校验；加载端按需解析，写侧只重写有推进的那一类。本机（11.7MB / 21445 行；单视图进程逐入口独立跑 5 次取中位）：`/usage` 采纳 25.6ms → **12.4ms**、analytics 25.0ms → 13.1ms、by_account 15.8ms → 1.3ms、timeseries 16.0ms → 2.8ms；面板五视图全跑（同进程）合计 27.4ms → 21.0ms。顺带修掉旧布局的一条实锤破坏路径：任何一次 save 都会把当时**不活跃的类**写成空段、整份覆盖，盘上那些类的旧数据被清掉——一个进程里 remaining 重折一次，其余四段就没了，下次启动五类全部冷重折。同一类里按 realm 分的条目同理：写盘只重写活跃 realm 的那些，**盘上还没被本进程碰过的 realm 条目原样保留**（真机实测：不保留时，重启后先请求 `realm=all` 再请求 `realm=intl`，intl 要重折 15s；保留后两个 realm 重启都免冷扫）。旧单文件只读兼容：某一类还没有自己的文件时从旧文件里取它那一节（升级后的第一次刷新不必整段重折），类文件一旦存在就只认类文件；旧文件不重写、也不删除，等各类都落过一次盘就自然被忽略。新增测试套件 `tests/_test_usage_cache_kinds.py`。
@@ -689,9 +681,9 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
   - 新增 `tests/_test_web_agent.py` 的 `ProxyTunnelTests`：钉住两种 URL 形态的解析、转义字符与 urllib 同口径、无凭据不发头、隧道确实带上该头，以及直连时不走隧道。
 - **修复「网页腿失败也写 lastDailyChat，当天积分静默丢掉」**：`_daily_chat_upstream()` 在桌面腿成功后立刻写 `lastDailyChat`，而网页腿（唯一计入官方「每日活跃」的那条）失败也照写；于是当天后续巡检 `can_daily_chat()` 直接跳过该账号，那天的 30/50 积分既不到账也不再重试，面板还显示「成功」。现在只有网页腿成功（或 `web=False`、没开网页通道）才写盘，失败时留到下一个巡检周期重试。
   - `tests/_test_daily_chat.py` 补三条：网页腿失败不写盘且 `can_daily_chat()` 仍为真、网页腿成功写盘、`web=False` 维持原语义。
-- **新增「配置器 CLI」：客户端不在网关机器上也能一条命令接入**（#280）：看板的一键配置运行在网关进程里，只在网关本机、用 `127.0.0.1` 打开看板时可用（远程访问与容器 / OpenWrt 部署按设计拒绝），网关跑在服务器 / NAS / 路由器上时，客户端装在别的电脑就用不上。现在 `wb_agents.py` 同时是可执行的配置器——`list` / `status` / `apply` / `restore`，在**客户端所在的机器**本地写配置（与看板共用同一套写入、备份、还原逻辑），只通过 HTTP 从网关取模型表；网关侧新增 `GET /agents/cli` 下发该脚本（免面板鉴权，正文与仓库内 `wb_agents.py` 逐字节一致、不含机密）。`--dry-run` 与真实写入共用同一条 `plan()` 生成路径；Key 走 `--key` → `WB_PROXY_API_KEY` → 交互提示，提示仅在 stdin 与 stdout 都是终端时出现（避免没有控制台的进程里 `getpass` 永久阻塞）。
+- **新增「配置器 CLI」：客户端不在网关机器上也能一条命令接入**（#280）：看板的一键配置运行在网关进程里，只在网关本机、用 `127.0.0.1` 打开看板时可用（远程访问按设计拒绝），网关跑在另一台 Windows 电脑上时，客户端装在别的电脑就用不上。现在 `wb_agents.py` 同时是可执行的配置器——`list` / `status` / `apply` / `restore`，在**客户端所在的机器**本地写配置（与看板共用同一套写入、备份、还原逻辑），只通过 HTTP 从网关取模型表；网关侧新增 `GET /agents/cli` 下发该脚本（免面板鉴权，正文与仓库内 `wb_agents.py` 逐字节一致、不含机密）。`--dry-run` 与真实写入共用同一条 `plan()` 生成路径；Key 走 `--key` → `WB_PROXY_API_KEY` → 交互提示，提示仅在 stdin 与 stdout 都是终端时出现（避免没有控制台的进程里 `getpass` 永久阻塞）。
   - 顺手修「apply → apply → restore 把自产文件当原件还原」：按内容哈希判定归属——仍逐字节等于我们最后写入的 → `restore` 删除；被用户手改过 → 备份并恢复用户版本。此前含 API Key 的 `.credentials.yaml` 会留在磁盘上，与文档承诺相悖。
-  - `release/portable_runtime.py` 的 `REQUIRED_FILES` 补 `Lib/getpass.py`（新增 import 后裁剪运行时缺该模块）；README 套件计数 119 → 120。
+  - README 套件计数 119 → 120。
 - **账号工具栏新增「一键切换所有出站身份」**（#254）：一次把**全部账号**（含另一个版本）的出站身份切到下一个——WB → VSC → CLI → 循环。按钮上直接显示当前身分，各账号不一致时显示「混合」，此时点一下统一成 WB。服务端 `/accounts/product` 本来就支持不带 `uid` 的全量切换（面板此前只有单账号的行内按钮，以及 429 时的自动换身分），这次补的是入口与提示；切完当场落盘，重启不丢。
   - `tests/_test_product_switch.py`（新套件）：钉住全量 / 按区域 / 单账号三条分支、非法身分被拒、落盘后重启仍在、重复切换不报变更；
   - `tests/_test_accounts_page.js`：钉住按钮位置、轮转顺序与「不带 uid」的提交形状，并在假 DOM 里真跑一遍。
@@ -725,15 +717,13 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 - **国内版连登管家与企业版门控**（口径参考 [linguo2625469/workbuddy2api-panel](https://github.com/linguo2625469/workbuddy2api-panel)）：把连登这一整套接进调度器——昨日漏签且有补签卡时自动补签（保连登）、7d/14d/28d 档位解锁即自动兑换（积分 / 能量 / 补签卡 / 抽奖次数）、有抽奖次数自动抽完，全程幂等（未解锁 / 已领过 / 没有次数都静默跳过）；同时按上游实测把企业版账号从成长体系里摘出去——企业号没有个人成长体系（`/activity/growth/*` 一律 403、签到 400 `code 10001`），签到 / 活跃上报 / 猫猫旅行 / 夜猫子 / 连登管家五类调用一律跳过，面板也不再给它渲染可签到标记；顺带补上新手礼包与活动补偿的领取（`claim-gift` / `claim-compensation`，每号一次、已领静默跳过）。
 
-- **小响应不再白付 40ms、突发并发不再卡 1 秒**（[PR #237](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/237)，感谢 [@aodianjun](https://github.com/aodianjun)）：服务端关掉 Nagle（响应头与响应体两次 write 不再互相等 ACK，werkzeug/uvicorn 同做法），listen backlog 从 stdlib 默认的 5 提到 128（面板打开一页就是 ~7 个并发）。真机（OpenWrt / Celeron N2840）：`/health` 中位 50.0ms → 1.41ms，64 并发突发「卡 ≥1s」43/64 → 0/64。顺带把单请求体上限默认从 50MB 收到 16MB（`WB_MAX_PAYLOAD_BYTES` 可调回）——读 body 发生在 chat 信号量之前，路由器上几个并发大 body 就能把内存打穿。
+- **小响应不再白付 40ms、突发并发不再卡 1 秒**（[PR #237](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/237)，感谢 [@aodianjun](https://github.com/aodianjun)）：服务端关掉 Nagle（响应头与响应体两次 write 不再互相等 ACK，werkzeug/uvicorn 同做法），listen backlog 从 stdlib 默认的 5 提到 128（面板打开一页就是 ~7 个并发）。真机（Celeron N2840）：`/health` 中位 50.0ms → 1.41ms，64 并发突发「卡 ≥1s」43/64 → 0/64。顺带把单请求体上限默认从 50MB 收到 16MB（`WB_MAX_PAYLOAD_BYTES` 可调回）——读 body 发生在 chat 信号量之前，路由器上几个并发大 body 就能把内存打穿。
 
 - **面板轮询不再自己把自己堵住**（[PR #238](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/238)，感谢 [@aodianjun](https://github.com/aodianjun)）：`getJSON` 加 URL 级单飞（冷窗口时同一 URL 曾发 13 份、6 份并发，还把 `/accounts`、`/scheduler` 一起堵住）；日志页改成只 append 新行、最近请求渲染前比指纹跳过；英文界面的 i18n 观察者加 WeakMap 缓存；修掉会话失效后 401 轮询停不下来的 bug；`/v1/models?realm=all` 轮询从 5s 改为 10 分钟 TTL。
 
 - **请求热路径提速**（[PR #239](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/239)，感谢 [@aodianjun](https://github.com/aodianjun)）：指纹判定从小写副本上的字面量 `in` 走（等价性按 `re.IGNORECASE` 的 Unicode 特例归一化后逐码点验证），`/v1/chat/completions` 不再重复构建上游 body，token 估算改单遍扫描，`wb_settings.load` 加 (path, mtime, size) 缓存（写入仍即时可见）。168KB 请求的 pre-upstream 合计 48.07ms → 18.50ms。
 
 - **用量聚合最后两个全量读者改增量，外加三个 bug**（[PR #240](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/240)，感谢 [@aodianjun](https://github.com/aodianjun)）：`perf_stats` 加窗口预过滤（`range=today` 389~422ms → 211ms）、`count_usage_rows` 改增量折叠（319ms → 0.23ms，位置校验不过才从零重数）；修掉 checkpoint 空闲也整份重写（每 900s 白写 120KB）、`wb_agents.integrate()` 回滚分支的 `NameError`（多文件客户端写一半失败时既不回滚也不写 state）、两处死代码。
-
-- **OpenWrt 预热器覆盖面板真正轮询的接口**（[PR #241](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/241)，感谢 [@aodianjun](https://github.com/aodianjun)）：预热清单 5 → 20 个目标（补上带 range 的 `/usage`、`/usage/perf` 与 `realm=intl|cn`、by-account、timeseries 四个窗口），服务启动后后台预热一次，预热 cron 由 `*/12` 收紧到 `*/2`（缓存命中不延长 TTL，间隔必须显著小于 TTL）。
 
 - **按 API Key 归属表可收起「(切换前)」行**（[PR #242](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/242)，感谢 [@LeoK77S](https://github.com/LeoK77S)）：表头新增与「启用价估算」同款的开关，默认显示、偏好存服务端；同时「启动参数」只在日志里确实出现过它的用量时才占一行（面板有 key 时它恒为 0）。
 
@@ -743,9 +733,9 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 - **每日活跃打卡的日志带上网页通道结果**（issue #236）：国际版打卡分两步，桌面端那条轻量对话几乎不会失败，真正决定 30/50 积分的是网页通道会话——而巡检日志只写「✓ 每日活跃对话成功」，网页通道失败时面板上完全看不出来，只能等第二天发现积分没涨。现在巡检与手动打卡的日志都直接带上结果（`网页通道 completed：N 段输出，N ms` / `网页通道失败：<原因>`），与国内签到那条日志的写法一致。
 
-- **一键配置只在网关本机可用，服务端形态整个不加载；顺带修掉第 5 个 Tab 挤坏移动端顶栏**（issue #246，感谢 [@houfukude](https://github.com/houfukude)）：这个功能写的是「网关进程所在机器」的客户端配置，只有浏览器和网关同一台机器时成立——服务端 / Docker / OpenWrt 部署下看板是远程打开的，改了也到不了用户自己的电脑。
+- **一键配置只在网关本机可用，服务端形态整个不加载；顺带修掉第 5 个 Tab 挤坏移动端顶栏**（issue #246，感谢 [@houfukude](https://github.com/houfukude)）：这个功能写的是「网关进程所在机器」的客户端配置，只有浏览器和网关同一台机器时成立——从其他设备打开看板时，改了也到不了用户自己的电脑。
   - `wb_agents` 改成**懒加载**：路由命中且判定通过才 import，用不到它的部署零常驻、零探测、零备份；
-  - 新增可用性判定：请求来源**只认回环**（`127.0.0.1` / `::1` / `::ffff:127.0.0.1`），容器（`/.dockerenv`、`/proc/1/cgroup` 里的 docker/containerd/kubepods）与 OpenWrt（`/etc/openwrt_release`、`os-release` 的 `ID=openwrt`）标记另算一道、压过来源判定；不通过时 `GET /agents` 回 `enabled:false`，`/agents/apply`、`/agents/restore` 直接 403；
+  - 新增可用性判定：请求来源**只认回环**（`127.0.0.1` / `::1` / `::ffff:127.0.0.1`）；不通过时 `GET /agents` 回 `enabled:false`，`/agents/apply`、`/agents/restore` 直接 403；
   - 看板启动时用新增的廉价接口 `GET /agents/available` 判定（不 import、不探测），判定为不可用就把入口整个撤掉，`?tab=agents` 的书签退回网关页；本机打开看板的行为一点没变；
   - **移动端顶栏**：≤640px 主 Tab 行改成横向滚动（与 `.page-nav` 在 ≤860px 的做法一致），按钮保持可读宽度、放得下时仍然平分整行——issue 里的实测溢出（414px +5px、360px +19px、320px +59px）全部归零，390px 五个 Tab 一行放得下；
   - 测试：`tests/_test_agents.py` +11 项、`tests/_test_panel_route_auth.py` +4 项（远程来源读 `enabled:false`、写 403、容器标记压过回环、能力探测两侧答案）、`tests/_test_agent_ui.js` +3 项（入口隐藏与书签回退）；`tests/_mobile_check.py` 的 `nav-equal-width` 不再写死 4 个 Tab，改钉「标签不截断 / 不顶出导航条 / 填满整行」三条几何性质。
@@ -782,7 +772,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 - **面板隐藏「网页通道打卡 (国际版)」按钮**：网页通道那一步已经由设置里的「国际版每日活跃打卡」自动带在「每日活跃打卡」里，单独那个按钮不再上屏（手动补跑走 `/accounts/daily-chat-web`）。按钮元素留在 DOM 里但始终 `display:none`，要放回面板时去掉它并恢复 `updateUI()` 里的按视图显隐即可。
 
-- **tag 触发的发布打包与 Draft Release（issue #28）**：`v*` tag 现在由 `.github/workflows/release.yml` 一条链路走完——校验 tag / `wb_proxy.py` / `wrt` 包 Makefile 三处版本一致，拿到**完整测试矩阵**（Ubuntu 3.9 + Ubuntu 3.12 + Windows 3.12，腿名从 `tests.yml` 读出来逐条核对）后，构建便携 ZIP、OpenWrt `.ipk` 与 `.apk`，按最终资产生成 `SHA256SUMS`，最后创建或更新 **Draft Release**。工作流永不 publish，最后一步还会断言它仍是 draft。便携 ZIP 是**绿色包**：在 `windows-latest` 上按「既有线上包那份运行时的文件集合」裁剪钉死并校验 sha256 的上游 CPython 3.12 运行时（527 个文件），打进 `wb-proxy/python/`，然后用包内解释器**真的启动一次网关并探通 `/health`**，所以资产不是被换了名字的源码包。包内 `release-manifest.json` 记录版本、`root`、`python/` 运行时子树与受保护目录 `accounts/`、`usage/`，作为自更新（#29）的消费契约；`release/portable.txt` 的显式清单同时补上了 `pricing/pricing.json` 这类运行时数据（`wb_pricing._candidate_file()` 优先读它）。OpenWrt 配方来自 #190 引用的 `aodianjun/workbuddy2api-hub/wrt/`，审计后并入：保留 `.ipk`/`.apk` 两个打包脚本、包 Makefile、init.d、uci 配置与面板缓存预热器；去掉 fork 专属的 GitHub 自更新器（`workbuddy2api-update` 及其 cron、`auto_update` 选项——OpenWrt 升级走包管理器）、fork 的工作流激活脚本与上游同步工作流，以及钉死上游 commit 的 `PIN_SHA`/`PIN_VER`（配方进了上游仓库后"从 GitHub 拉另一个 commit 的上游源码"没有意义，版本改为取自当前检出）。`-ci` 演练 tag 走完全相同的打包与 draft 流程，只是额外标成 prerelease。**只有 `v*` tag 推送能写 release**：`workflow_dispatch` 是 packaging-only，写入点单独放在一个 `if:` 为「事件是 push 且 ref 是 `refs/tags/v*`」的 job 里，手动运行的任何输入组合都够不到它（因此手动运行也不再有 `dry_run` 开关）。新增 `tests/_test_release_assets.py`（60 项）：清单覆盖每个 `wb_*.py` 与 `pricing/pricing.json`、清单路径都存在且不含受保护目录、运行时裁剪规则与启动契约（缺 `python.exe`／混进 `Lib/multiprocessing`／残留 `.pdb` 都必须被拒）、ZIP 结构（`wb-proxy/` + `python/` + 标记文件）与"不是源码包"、重建逐字节相同、`SHA256SUMS` 覆盖每个资产且随字节变化、正文重写幂等且保留维护者写在标记之上的说明、矩阵腿名确实来自 `tests.yml`（删一条腿就会少一条要求）、工作流必须 `--draft`、便携资产必须在 Windows 上打包并启动、任何写 release 的路径都必须拿到完整矩阵，以及**「只有 tag 推送能到写入点」这条不变量本身**。后者配了一张命令形态表：`gh release create/edit/upload/delete`、显式 `-X/--method POST|PATCH|PUT|DELETE`、以及**靠 `-f`/`-F`/`--field`/`--raw-field`/`--input` 触发隐式 POST 的 `gh api`** 都算写，显式 `-X GET`/`--method GET` 与 `echo` 出来的命令不算；扫描前先归一化 `\` 续行，并按 `&&`/`||`/`;` 切分，所以被拆开的命令也跑不掉。变异测试常驻：把写入点搬到 dispatch 路径、塞进别的 job、改成单行 `run:`、用隐式 POST 的 `gh api` 建 release、给 `workflow_dispatch` 加一个可能授权写入的输入、或抹掉全部写入点，检查器都必须判红。
+- **tag 触发的发布打包与 Draft Release（issue #28）**：`v*` tag 现在由 `.github/workflows/release.yml` 一条链路走完——校验 tag 与 `wb_proxy.py` 版本一致，拿到**完整测试矩阵**（任务名从 `tests.yml` 读出来逐条核对）后，构建 Windows 便携 ZIP，按最终资产生成 `SHA256SUMS`，最后创建或更新 **Draft Release**。工作流永不 publish，最后一步还会断言它仍是 draft。包内 `release-manifest.json` 记录版本、`root` 与受保护目录 `accounts/`、`usage/`，作为自更新（#29）的消费契约；`release/portable.txt` 的显式清单同时补上了 `pricing/pricing.json` 这类运行时数据（`wb_pricing._candidate_file()` 优先读它）。`-ci` 演练 tag 走完全相同的打包与 draft 流程，只是额外标成 prerelease。**只有 `v*` tag 推送能写 release**：`workflow_dispatch` 是 packaging-only，写入点单独放在一个 `if:` 为「事件是 push 且 ref 是 `refs/tags/v*`」的 job 里，手动运行的任何输入组合都够不到它（因此手动运行也不再有 `dry_run` 开关）。新增 `tests/_test_release_assets.py`（60 项）：清单覆盖每个 `wb_*.py` 与 `pricing/pricing.json`、清单路径都存在且不含受保护目录、ZIP 结构（`wb-proxy/` + 标记文件）、重建逐字节相同、`SHA256SUMS` 覆盖每个资产且随字节变化、正文重写幂等且保留维护者写在标记之上的说明、矩阵腿名确实来自 `tests.yml`（删一条腿就会少一条要求）、工作流必须 `--draft`、便携资产必须在 Windows 上打包并启动、任何写 release 的路径都必须拿到完整矩阵，以及**「只有 tag 推送能到写入点」这条不变量本身**。后者配了一张命令形态表：`gh release create/edit/upload/delete`、显式 `-X/--method POST|PATCH|PUT|DELETE`、以及**靠 `-f`/`-F`/`--field`/`--raw-field`/`--input` 触发隐式 POST 的 `gh api`** 都算写，显式 `-X GET`/`--method GET` 与 `echo` 出来的命令不算；扫描前先归一化 `\` 续行，并按 `&&`/`||`/`;` 切分，所以被拆开的命令也跑不掉。变异测试常驻：把写入点搬到 dispatch 路径、塞进别的 job、改成单行 `run:`、用隐式 POST 的 `gh api` 建 release、给 `workflow_dispatch` 加一个可能授权写入的输入、或抹掉全部写入点，检查器都必须判红。
 
 ## v1.6.18
 
@@ -908,17 +898,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 ## v1.6.13
 
 - **修复看板右上角颜色主题菜单按钮无法打开**（[PR #127](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/127)，感谢 [@LeoK77S](https://github.com/LeoK77S)）：修正 IIFE 作用域中 `toggleThemeMenu` 与 `selectTheme` 的全局导出时机，修复点击按钮报 `ReferenceError` 导致下拉菜单无法弹出的问题，现可正常手动选择「浅色 / 深色 / 跟随系统」；新增 `tests/_test_dashboard_theme.js` DOM 级可达性与交互回归测试；
-- **Docker 一键安装脚本补充国内网络加速与权限说明**（issue #126）：README 补充国内网络环境下通过 GitHub 代理加速拉取命令与 NAS 非 root 账户下的 `sudo bash` 说明。
-
-## v1.6.12
-
-- **Docker 部署与更新生态全面升级**（PR #125）：
-  - **一键部署与更新脚本 (`quick-deploy.sh`)**：终端仅需执行一行命令 `curl -fsSL https://raw.githubusercontent.com/ardeyouxipianyi/workbuddy2api-hub/main/quick-deploy.sh | bash`。首次运行自动检测环境并拉取启动；后续再次执行同一命令即可完成自动平滑升级，账号配置与历史用量绝不丢失；
-  - **NAS / 面板单文件 Compose 模板（免源码克隆）**：官方 `docker-compose.yml` 剔除 `build: .` 依赖，飞牛 fnOS、群晖、1Panel 等用户无需 `git clone`，直接复制粘贴 YAML 即可建站并支持面板一键更新；开发者本地构建单独拆分为 `docker-compose.build.yml`；
-  - **支持双镜像仓库推送（GHCR + Docker Hub）**：工作流新增对 Docker Hub（`ardeyouxipianyi/workbuddy2api-hub`）的自动同步推送，消除前缀缺省报错困扰，兼顾国内 Docker 镜像加速器拉取；
-  - **Watchtower 全自动静默更新**：提供开箱即用的 Watchtower 配置与命令，支持后台无感自动升级。
-
-
 ## v1.6.11
 
 - **修复 Codex Responses 缺省 max_output_tokens 导致 32k 截断**（issue #121）：当客户端未显式传入输出上限时，网关自动根据模型目录中宣告的 `maxOutputTokens`（如 `deepseek-v4.1-flash` 为 128,000）进行兜底补全，避免长推理因触发上游默认 32k 限额而中断无正文。
@@ -928,7 +907,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **新增「按模型每日 Token 限额」**（默认 `0` 不限）：账号在单个模型上当日消耗的 token 达到阈值后，只把**该模型**切到其他账号，同一账号的其他模型不受影响——例如 `hy4-preview` 用满 2 亿后该模型被跳过，`deepseek-v4.1-flash` 仍可用。账号行显示 `模型 · N tok 达限` 标记；本地时间 0 点自动解封；单账号独立计数。
 - 两个限额与现有「每日 Token 限额」共用同一份增量扫描（`daily_usage_stats`），请求热路径开销不变；新增 `tests/_test_daily_credit_limit.py`（10 项），整套增至 30 个套件（25 个 Python + 5 个 JS）全绿。
 - **新增「OpenRouter 价估算（等价 token 花费）」**：把请求 token 按 OpenRouter 公布的模型价折算成等价金额，与账号实际扣除的积分并列展示。定价快照内嵌在 `wb_pricing.py`（单一来源：OpenRouter 目录，美元，按快照汇率折算；大多数模型一个价，按条件定价的模型（输入长度阈值或 UTC 时段）按每条请求取档），`_fetch_pricing.py` 可随时刷新（支持 `--embed` 回写内嵌、`--dry-run` 只打印，`--extra-ids-file` 额外覆盖一批名字），并按「面板手填覆盖 → 人工覆盖表 → 名字归一化全等 → 变体后缀继承」依次为模型取价。计价含缓存命中/未命中分档。看板显示位：数据指标看板 KPI 卡片、账号透视表最后一列、模型用量表最后一列（含合计）、网关页卡片、最近请求最后一列；**人民币/美元一键切换**，无定价模型显示 `—` 并计入「未覆盖」。
-- **定价按策略留档、定时自动刷新**：网关每隔一段时间（面板「设置 → 定价刷新」，默认 **5 分钟**，单位即分钟，填 0 关闭）去 OpenRouter 取一次价，按**内容**存成一条条独立的定价策略（同一模型同一份价格只存一条，A → B → A 只占两条），并用一条时间轴声明每个模型当前生效的是哪一条。`usage.jsonl` 每条请求记下它**引用了哪条策略**，计价按引用查——之后上游调价不会改写昨天已经算出的数字；当时还没有价的模型用之后第一次取到的价补算并标 `*`。没有任何请求引用、又已经不作数的策略会在抓取后清掉（每个模型至少留一条，刚取到的那批不动）。所有汇总都是把逐条估算相加，不拿汇总 token 乘单价重算。取价逻辑一并从 `_fetch_pricing.py` 移进 `wb_pricing.py`（Docker 镜像只 COPY `wb_*.py`，运行时取不到那个脚本），后者只负责生成出厂快照。
+- **定价按策略留档、定时自动刷新**：网关每隔一段时间（面板「设置 → 定价刷新」，默认 **5 分钟**，单位即分钟，填 0 关闭）去 OpenRouter 取一次价，按**内容**存成一条条独立的定价策略（同一模型同一份价格只存一条，A → B → A 只占两条），并用一条时间轴声明每个模型当前生效的是哪一条。`usage.jsonl` 每条请求记下它**引用了哪条策略**，计价按引用查——之后上游调价不会改写昨天已经算出的数字；当时还没有价的模型用之后第一次取到的价补算并标 `*`。没有任何请求引用、又已经不作数的策略会在抓取后清掉（每个模型至少留一条，刚取到的那批不动）。所有汇总都是把逐条估算相加，不拿汇总 token 乘单价重算。取价逻辑一并从 `_fetch_pricing.py` 移进 `wb_pricing.py`，后者只负责生成出厂快照。
 - **取价间隔改为分钟计（默认 5 分钟），旧的小时配置自动折算**：此前该设置按小时计、存在 `pricing_refresh_hours`；现在统一为分钟并存 `pricing_refresh_minutes`，`settings.json` 里遗留的小时值在升级后第一次读取时按 ×60 折算写回新键、旧键删除（只迁移一次），所以「6 小时」不会变成「6 分钟」。0 仍表示关闭自动刷新，「立即取价」不受影响。
 - **上游新增模型无需改代码即可自动取价**：取价的候选清单从「只读 `wb_catalog.py`」改为 **静态目录 ∪ 网关实时目录里新增的模型**（intl 与 cn 两个区域各自的实时目录都会并进来，走 `/v1/models` 同一套过滤；某个区域取不到时该区域回落静态目录，一次抓取失败不会让覆盖变少）。两次取价之间新模型就被调用时，第一笔请求也会带价：`wb_pricing.ensure_policy()` 用最近一次抓取留在内存的目录按需登记策略，**请求路径零网络 I/O**，登记在 `RLock` 内完成、并发重复调用也只写一条，新登记会打一条 `[定价]` 日志。匹配链新增**变体后缀继承**（`VARIANT_SUFFIXES`：剥掉 `-lkeap` / `-taiji` / `-volc` / `-sg` 等渠道后缀，拿基名重走解析链，仍要求唯一命中），继承来的策略记 `via=variant` 与 `inherited_from` 供面板审计；设置页新增「变体后缀继承」开关（默认开，关掉即恢复只有覆盖表与同名匹配才定价）。`-f` / `-dev` / `-x` 不剥——它们是 hub 自己的档位，单价可能不同。匹配始终「宁可漏也不错」，多轮未命中的不写价。
 - **未定价模型可见化，并可在面板手填 OpenRouter id 收口**：`GET /pricing` 新增未定价清单，每条带分类（`alias` 虚拟别名，不计入缺口 / `or_missing` OpenRouter 无对应 / `variant_unmatched` 剥后缀后仍无唯一基准）与相似度 top 3 候选（**仅建议，绝不自动采用**）；面板「设置 → 定价刷新」下新增未定价区域，可为某条模型直接填 OpenRouter id「登记」，映射写入数据目录的 `pricing-overrides.json`（运行期覆盖，不改源码 `OVERRIDES`，升级镜像不丢），提交后立即触发一次取价；留空提交即删除映射。新增 `POST /pricing/mapping`。
@@ -939,7 +918,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **「扫描桌面客户端账号」重新可用：桌面端加密凭据现在能在网关里直接解密**（入口此前因加密改造被隐藏）：桌面客户端从 2026-09-24 起把 `accessToken` / `refreshToken`（国内版还连带 `nickname` / `phoneNumber`）改成 `$wbEncrypted` 信封存储，扫描只能读到信封文本，导入后聊天、刷新凭证、查积分一律 401，当时只能把入口摘掉、让用户改走 OAuth。现在按客户端 `packages/at-rest-crypto` 的同一套方案就地解密（`key = sha256(atRestSecretKey)`、`keyId = sha256(key)[:16]`、AAD 为 `WB-AAD\0` + 版本 + `LP(WBEF1/WBEV1)` + `LP("sym-v1")` + `u32(suite)` + `LP(keyId)` + 帧代码 + 两个 0），入口放回来了。
   - 解码密钥只存在于客户端原生模块的运行内存里、磁盘上没有明文，所以网关从**正在运行的** `WorkBuddy.exe` 主进程内存里把它找回来（`OpenProcess(PROCESS_VM_READ)` + `VirtualQueryEx` + `ReadProcessMemory`，全程只读，不向目标进程写任何东西）；找到后用 keyblob 的 `protectorKeyId` 与一次 GCM 解封双重校验，校验不过就当没找到。密钥只留在网关进程内存中，不落盘、不进日志，网关重启后重新回收一次。
   - 内存回收不再逐字节哈希。三档扫描、命中即止：先按 `atRestSecretKey` 字段名和孤立的 44 字符规范 base64 捞出密钥载荷直接推导（正则走 C 层，约 460 MB/s），不中再按 8 字节栅格逐窗口哈希，最后才逐字节兜底；内存段按 64 MB 切片后均分给多个扫描子进程，任意一个命中其余立刻收工。对比上游那版逐字节脚本（单进程 1.36 MB/s、12 进程 16 MB/s），实测 462 MB 的客户端内存 **0.8 秒**拿到密钥。
-  - 新模块 `wb_atrest.py` 只用标准库（自带 AES-256-GCM 与 GF(2^128) 实现，不引入任何 pip 依赖，绿色包内置的 Python 直接能跑）；并行用的是 `sys.executable` 拉子进程，而不是 `multiprocessing`——绿色包那份精简 Python 里根本没有这个模块，用它会直接报错。
+  - 新模块 `wb_atrest.py` 只用标准库（自带 AES-256-GCM 与 GF(2^128) 实现，不引入任何 pip 依赖，系统 Python 直接能跑）；并行用的是 `sys.executable` 拉子进程，由网关解释器直接执行扫描任务。
   - 实测完整链路（Windows + 真实客户端）：两个 `.info`（国内版 / 国际版）的 token 与昵称都正常解出并导入成功；导入后的国内版账号 `/accounts/test` 直接拿到模型回复，国际版账号的凭证查询接口返回真实积分（顺带确认导入的是可直接使用的那串 token，不是信封）。
 - **修掉区域判定的两处旧账**（手动导入 JSON 时「明明是国内版却进了国际版」就是这么来的）：`detect_realm_from_token()` 只认 `copilot.tencent.com` 与 `codebuddy.cn`，而国内版后来把出口换成了 `workbuddy.cn`（新版国内客户端的 JWT issuer 就是 `https://www.workbuddy.cn/…`），这类国内账号一律被判成国际版；JSON 里没有 `realm` 字段就会中招，而且一旦存错，导出再导入还会把这个错误一路带着。现在：
   - 三个国内出口（`copilot.tencent.com` / `codebuddy.cn` / `workbuddy.cn`）都认，国际版认 `workbuddy.ai` / `codebuddy.ai`，两边都看不出时不再假装知道（`realm_evidence()` 返回空，由调用方决定怎么兜底）；
@@ -978,7 +957,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 ## v1.6.8
 
-- **模型列表改为跟随上游 `GET /v3/config` 的实时清单**（issue #85，感谢 [@Jay-Young](https://github.com/Jay-Young)）：此前只认桌面端缓存文件与内置快照，没装桌面端的机器（Docker / NAS / Linux 服务器）拿不到桌面端 picker 的那份列表。现在 `/v1/models` 直接向出口要 `agents[cli].models`——与桌面端同一份清单，缓存文件退为回落。
+- **模型列表改为跟随上游 `GET /v3/config` 的实时清单**（issue #85，感谢 [@Jay-Young](https://github.com/Jay-Young)）：此前只认桌面端缓存文件与内置快照，没装桌面端的机器拿不到桌面端 picker 的那份列表。现在 `/v1/models` 直接向出口要 `agents[cli].models`——与桌面端同一份清单，缓存文件退为回落。
   - 过滤规则：去掉 5 个档位别名（`default-model`、`fast-model`、`balanced-model`、`primary-model`、`deep-model`）与国内版的 `auto` 路由项，去掉 `-sg` / `-x` 变体，同名的只留 0.00 倍率那一档（国际版留 `deepseek-v4.1-flash`、丢 `-sg`，留 `hy4-preview-f`、丢 `hy4-preview`）。
   - 上游新上的模型无需发版即可出现在 `/v1/models`（表外的新名字按上游顺序追加在末尾）；表顺序与国内版 `hy4-preview-f` 这类免费档的保留不变。
   - 回落顺序：远端 → 桌面端缓存文件 → 窄端点（仍走旧白名单）→ 内置快照；10 秒一次、最多两次（聊天桌面 UA 失败后换应用 UA）。
@@ -994,9 +973,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
   - 匹配用 `fnmatch`、大小写不敏感；`deepseek*` 同时覆盖 `deepseek-v4.1-flash` 这种裸 ID 和 `deepseek/deepseek-v4.1-flash` 这种带前缀的形态；精确名字不会连带命中后缀（`gpt-6-astra` 不含 `gpt-6-astra-high`，要连带就写 `gpt-6-astra*`）。
   - `/settings/save` 在提交的行省略该字段时保留已存的值，旧版缓存面板不会把限制洗掉；`/v1/chat/completions` 与 `/v1/responses` 两条路径都会拦。
 - **修复 `BLOCK_BACKGROUND_REQUESTS` 误拦使用者的「压缩上下文」**（[PR #86](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/86)，感谢 [@Cekxri](https://github.com/Cekxri)）：该开关的关键字表里有 `compaction`，而使用者按「压缩上下文」时发出的请求 `request_kind` 同样是 `compaction`，于是开关一打开，按钮收到的是拒绝报文而不是摘要。现在按「这次压缩是谁发起的」区分：客户端自己发起的压缩带 `thread_source=memory_consolidation`（继续拦），使用者在自己线程上按的压缩放行；`auto_review` 这类即使跑在用户线程上也仍然拦。新增 `tests/_test_background_requests.py` 钉住区分规则。
-- **新增 Docker 镜像发布工作流**（[PR #83](https://github.com/ardeyouxipianyi/workbuddy2api-hub/pull/83)，感谢 [@xihan123](https://github.com/xihan123)）：Release 发布后自动构建并推送 `linux/amd64` + `linux/arm64` 双架构镜像到 GHCR（`ghcr.io/ardeyouxipianyi/workbuddy2api-hub`，正式版同步打 `latest`），README 补了从 GHCR 拉取运行的说明（GHCR 新包默认私有，要免登录拉取需在 Packages 设置里改为 Public）。
-
-
 - **新增「每日 Token 限额」：按账号当天用量提前停用、自动切号**（issue #82，感谢 [@RiggTIan](https://github.com/RiggTIan)、[@lkxlzx](https://github.com/lkxlzx)）：上游的免费额度是按 token 计窗口的（如 `deepseek-v4.1-flash` 约 2 亿 / 12 小时），打满后该账号当天只能等窗口重置——报告里「把用满的号停用后，另一个号也请求失败」，实际是上游把第二个号的大请求也判了限额（`code 6004`），而 1 条消息的小请求仍能通过，所以账号行「测试」显示正常、大请求却 429。现在看板「设置 → 每日 Token 限额」填一个数即可：账号当日消耗的 token 达到该值后暂停接单、请求自动切到其他账号，本地时间 0 点后自动恢复；**填 0 表示不限**（默认值）。
   - 计数取自 `usage.jsonl` 里该账号当天的 token 合计，与看板「今日消耗」同一口径（跳过客户端中断的行）；增量扫描 + 15 秒缓存，热路径只读新增的行。计数由日志折算，重启后停用状态依然有效。
   - 被停用的账号在账号行显示「日限额」徽章（悬停可看今日已用 / 上限），池子卡片显示「N 个达日限额」，控制台打印 `account xxx parked: daily token limit reached (...)`；所有账号都达额时请求返回 `429` + `Retry-After`（到本地 0 点），文案说明是本地限额，不碰上游。
@@ -1025,7 +1001,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
   - `/usage`、`/usage/perf`、`/usage/analytics` 三个取数端点统一接受 `range` / `since` / `until` 参数，KPI 卡片、账号透视表与模型性能表会一起切到同一窗口，第一列的标题同步变为「本周消耗 Token」等，不会再出现「卡片显示今日、表格显示全部」的口径分裂。
   - 缓存键由原来的 today/all 二值改为真实窗口边界：本周与本月是重叠区间，二值键会让其中一个窗口的数字被另一个顶掉。
   - 模型性能表的延迟 / 速度列取自日志末尾的采样，窗口比采样更宽时会在表头注明覆盖起点，不再让局部数据冒充整个窗口。
-- **修复出站身分切换后重启即丢失**（issue #76，感谢 [@1766266028](https://github.com/1766266028) 的完整定位与复现）：账号加载时把出站身分硬编码成默认的 WorkBuddy 桌面端，凭证文件里保存的值被读进一个全仓无人使用的字段（`saved_product`），于是面板上的 WB / VSC / CLI 切换（以及启用后的 429 自动切换）虽然确实写进了凭证文件，重启后却一律打回 WB——`set_product()` 的注释承诺「重启后仍然有效」，与实际行为矛盾。现在加载时读回凭证文件中的身分，非法值仍由 `normalize_product()` 回退到默认；同时面板切换在改完内存后立即落盘，不必再等 refresh / 签到 / 查积分之类的路径顺带保存——切完就重启容器的人不会再白白丢掉这次切换。新增 `tests/_test_product_persistence.py`（17 项断言）覆盖加载、别名归一、非法值回退、切换落盘与重载，以及身分最终落到端点与出站标头。
+- **修复出站身分切换后重启即丢失**（issue #76，感谢 [@1766266028](https://github.com/1766266028) 的完整定位与复现）：账号加载时把出站身分硬编码成默认的 WorkBuddy 桌面端，凭证文件里保存的值被读进一个全仓无人使用的字段（`saved_product`），于是面板上的 WB / VSC / CLI 切换（以及启用后的 429 自动切换）虽然确实写进了凭证文件，重启后却一律打回 WB——`set_product()` 的注释承诺「重启后仍然有效」，与实际行为矛盾。现在加载时读回凭证文件中的身分，非法值仍由 `normalize_product()` 回退到默认；同时面板切换在改完内存后立即落盘，不必再等 refresh / 签到 / 查积分之类的路径顺带保存——切完就重启网关的人不会再白白丢掉这次切换。新增 `tests/_test_product_persistence.py`（17 项断言）覆盖加载、别名归一、非法值回退、切换落盘与重载，以及身分最终落到端点与出站标头。
 
 - **429 自动切换出站身分改为面板开关**（issue #67）：切换逻辑本身一直存在（WB / VSC / CLI 轮转、每轮最多 4 次、60 秒内算同一轮、成功即归零），但总开关是源码里的常量 `AUTO_SWITCH_PRODUCT = False`，面板上没有入口，想用只能改代码。现在改为「设置」页的开关，默认关闭（与改动前行为一致），保存后下一次请求即生效，不再需要动源码。取值严格限定为 JSON 布尔：字符串 `"false"` 之类一律 400 拒绝，否则一个真值字符串会把开关悄悄打开，而这正是关掉它的人最不希望发生的事。需要留意的是，开启后切换到的身分同样会随凭证文件持久化（见上一条），重启后不会自动回到 WB——面板上已写明这一点。
 
@@ -1034,11 +1010,10 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 - **全套测试收拢与官方 CI 流水线建设**（PR #65，感谢 [@teddyli18000](https://github.com/teddyli18000)）：
   - 将散落在根目录的 20 个测试套件整齐规整至 `tests/` 目录下；
   - 新增统一测试运行器 `tests/run_all.py`，支持一键隔离运行全部 20 个测试套件或按关键词过滤；
-  - 引入官方 GitHub Actions 自动化 CI 流水线（`.github/workflows/tests.yml`），每次提交与 PR 自动覆盖 Ubuntu（Python 3.9/3.12）与 Windows 跨平台测试矩阵。
+  - 引入官方 GitHub Actions 自动化 CI 流水线（`.github/workflows/tests.yml`），每次提交与 PR 自动覆盖 Windows 测试。
 
 ## v1.6.1
 
-- **修复 Docker 部署默认无鉴权开放代理漏洞**（PR #64，感谢 [@teddyli18000](https://github.com/teddyli18000)）：容器 CMD 默认追加 `--lan` 启动并移除写死的 `--port 8788`。无显式 `API_KEY` 时将自动生成高强度 Key 持久化保存并打印在日志中，拒绝匿名公网调用，消除未授权盗刷风险，同时支持通过 `PORT` 环境变量动态指定内部端口。
 - **修复签到与活跃打卡后视图强制跳转**（PR #63，感谢 [@teddyli18000](https://github.com/teddyli18000)）：拆分 `refreshActiveRealm()` 与 `initRealm()`，国内签到和国际版每日活跃打卡完成后仅更新出口状态与用量，不再将当前浏览的区域视图强行跳回默认出口。
 
 ## v1.6.0
@@ -1056,7 +1031,7 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 - **隐藏「扫描桌面客户端账号」入口**：桌面客户端自 2026-09-24 起把 `accessToken` / `refreshToken` 改成加密存储（`$wbEncrypted` 信封），扫描仍能读到文件，但拿不到可用的 token——导入后聊天、刷新凭证、查积分全部返回 401。入口已隐藏，请改用 OAuth 添加账号；相关代码（前端 `scanDesktop()` 与后端 `/accounts/import/desktop`）保留未删，等解密打通或改走其他凭据来源后再放出来。
 - **两个按钮改名**：「一键自动分配出口」→「分配代理出口给未绑定账号」（它只给尚未绑定出口的已启用账号轮询分配，已有绑定的账号不动，原名容易被读成重新平衡全部账号；同时补了 tooltip 并修正两条 toast 的措辞）；账号行的「刷新」→「刷新凭证」（换的是该账号的登录凭证，不是页面、积分或账号列表）。
-- **README 全面精简**：345 行压到 305 行、字符数减少约 23%，事实与贡献者记录一条未删；顺带修掉两处已失效的说法——头部特性里的「亦支持扫描本地客户端导入」，以及 Docker 那节整段的桌面凭据挂载说明。
+- **README 全面精简**：345 行压到 305 行、字符数减少约 23%，事实与贡献者记录一条未删；顺带修掉两处已失效的说法——头部特性里的「亦支持扫描本地客户端导入」。
 
 ## v1.5.7
 
@@ -1064,7 +1039,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 ## v1.5.6
 
-- **Docker 部署下的 Linux 桌面凭据挂载**（PR #55，感谢 [@LuFering](https://github.com/LuFering)）：新增 `docker-compose.override.yml.example`，以只读方式把宿主机 `~/.local/share/CodeBuddyExtension/Data/Public/auth` 挂进容器，补上 Linux + Docker 场景下看板扫描不到桌面凭据的说明；`.gitignore` 同时忽略本地 `docker-compose.override.yml`。
 - **保留积分开关**（issue #44）：看板「设置」新增最低保留积分，账号余额低于该值时不再接单，避免余额被用尽后触发上游的提醒短信。填 `0` 关闭（默认）；从未查询过余额的账号不受影响；账号只是停止接单，仍在池中并继续定时任务，充值后自动恢复。阈值保存在 `accounts/settings.json` 的 `reserve_credits`，改动即时生效、无需重启。
 
 ## v1.5.5
@@ -1087,10 +1061,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 ## v1.5.3
 
 - **移除网关内置的 `web_search` / `web_fetch` 代跑**（issue #43）：实测上游本来就没有服务端搜索能力（声明与不声明工具时模型反应一致、调用次数为 0），而代跑实现有参数名只认 `query`、工具重复下发、失败时发合成 `resp_wrapup` 把失败伪装成正常结束三处缺陷。现工具声明原样透传，客户端自己声明的搜索工具会正常拿到调用。
-
-## v1.5.2
-
-- **修复 Docker 镜像缺少运行时模块**（PR #41，感谢 [@wiggins-kong](https://github.com/wiggins-kong)）：Dockerfile 的显式 COPY 清单漏掉 v1.5.0 新增的 `wb_identity.py` 与 `wb_webtools.py`，容器启动即 `ModuleNotFoundError`。现改为 `COPY wb_*.py dashboard.html ./`。仅影响 Docker 部署，绿色包与本地运行不受影响。
 
 ## v1.5.1
 
@@ -1119,8 +1089,6 @@ Windows 便携包补一个可选的前台窗口启动入口：默认仍是静默
 
 - **HTTP 连接同步修复**（PR #30）：请求被提前拒绝时未读取请求体，会让后续请求在同一 keep-alive 连接上解析失败（日志表现为空请求行的伪 414）；同时支持 chunked 请求体、`Expect: 100-continue`、超大请求体立即 413。
 - **超长请求行回复丢失修复**：414 后直接关闭会因未读数据触发 RST，客户端收不到响应；现先有限度排空再回复。
-- **macOS 启动脚本**（PR #31）：新增 `start-wb-proxy.sh` / `.command`、局域网版本与防火墙助手；Windows `.bat` 未修改。
-
 ## v1.4.7
 
 - **每账号独立出口代理**（PR #26，感谢 [@ayeaaaa](https://github.com/ayeaaaa)）：新增可命名、可启停的代理槽位，账号绑定后其全部出站请求固定走该出口；看板支持槽位增删、出口 IP 测试与逐账号绑定。

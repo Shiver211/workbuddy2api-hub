@@ -54,27 +54,21 @@ def alive(pid):
     would read as "gone" for every pid - including this very process - and the
     liveness checks below would pass without checking anything.
     """
-    if os.name == "nt":
-        import ctypes
-        from ctypes import wintypes
-        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-        STILL_ACTIVE = 259
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
-        if not handle:
-            return False
-        try:
-            code = wintypes.DWORD()
-            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == STILL_ACTIVE
-        finally:
-            kernel32.CloseHandle(handle)
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
+    import ctypes
+    from ctypes import wintypes
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
         return False
+    try:
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def kill_orphan(pid):
@@ -82,21 +76,16 @@ def kill_orphan(pid):
 
     taskkill can be refused where this matters, so go to the OS directly.
     """
-    if os.name == "nt":
-        import ctypes
-        PROCESS_TERMINATE = 0x0001
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-        handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
-        if handle:
-            try:
-                kernel32.TerminateProcess(handle, 1)
-            finally:
-                kernel32.CloseHandle(handle)
-        return
-    try:
-        os.kill(pid, 9)
-    except OSError:
-        pass
+    import ctypes
+    PROCESS_TERMINATE = 0x0001
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
+    if handle:
+        try:
+            kernel32.TerminateProcess(handle, 1)
+        finally:
+            kernel32.CloseHandle(handle)
+    return
 
 
 port = life.free_port()
@@ -133,12 +122,8 @@ proc.wait(timeout=30)
 stopped = life.stop_managed(proc)
 time.sleep(0.5)
 left = alive(grandpid)
-if os.name == "nt":
-    check("stop_managed() reports it cannot walk a dead pid on Windows",
-          stopped is False, "returned %s" % stopped)
-else:
-    check("stop_managed() reaches a grandchild whose parent already exited",
-          stopped and not left, "grandchild alive=%s" % left)
+check("stop_managed() reports it cannot walk a dead pid on Windows",
+      stopped is False, "returned %s" % stopped)
 kill_orphan(grandpid)
 time.sleep(0.5)
 check("the probe leaves no process behind here either",

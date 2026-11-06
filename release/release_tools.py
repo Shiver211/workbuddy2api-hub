@@ -27,7 +27,6 @@ import os
 import sys
 import zipfile
 
-import portable_runtime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -46,7 +45,7 @@ PACKAGE_ROOT = "wb-proxy"
 # so #29 can assert the contract instead of hardcoding it a second time.
 PROTECTED = ["accounts/", "usage/"]
 
-# Reproducible-build timestamp, the same convention the .ipk recipe uses.
+# Reproducible-build timestamp.
 DEFAULT_EPOCH = 1700000000
 
 
@@ -79,22 +78,12 @@ def _zip_date(epoch):
     return (t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec)
 
 
-def build_portable(version, tag, out_path, source=ROOT, runtime_dir=None,
+def build_portable(version, tag, out_path, source=ROOT,
                    root=PACKAGE_ROOT, epoch=DEFAULT_EPOCH):
-    """Write the portable ZIP and return (path, [managed files]).
-
-    `runtime_dir` is the trimmed CPython the launchers look for under
-    `python/`. It is required: the asset this replaces is the green package,
-    and a ZIP without the runtime is a different, much less useful thing.
-    """
+    """写入 Windows 应用 ZIP；Python 由使用者自行安装。"""
     got = source_version(source)
     if got != version:
         raise SystemExit("版本不一致：wb_proxy.py=%s，参数=%s" % (got, version))
-    if not runtime_dir or not os.path.isdir(runtime_dir):
-        raise SystemExit("缺少 --runtime：便携包必须带 python/ 运行时"
-                         "（先用 release/portable_runtime.py prepare 生成）")
-    portable_runtime.verify(runtime_dir)
-
     files = read_manifest()
     missing = [p for p in files if not os.path.isfile(os.path.join(source, p))]
     if missing:
@@ -107,11 +96,7 @@ def build_portable(version, tag, out_path, source=ROOT, runtime_dir=None,
         with open(os.path.join(source, name), "rb") as fh:
             data = fh.read()
         lower = name.lower()
-        if lower.endswith((".sh", ".command")):
-            # Issue #329: 强制 LF 换行并赋予执行位，防止 Windows 检出的 CRLF 导致 macOS / Linux 启动报 bad interpreter
-            data = data.replace(crlf_bytes, lf_bytes)
-            mode = 0o755
-        elif lower.endswith(".bat"):
+        if lower.endswith(".bat"):
             # Windows 批处理脚本保持 CRLF
             data = data.replace(crlf_bytes, lf_bytes).replace(lf_bytes, crlf_bytes)
             mode = 0o755
@@ -121,15 +106,6 @@ def build_portable(version, tag, out_path, source=ROOT, runtime_dir=None,
         else:
             mode = 0o644
         entries.append(("%s/%s" % (root, name), data, mode))
-    runtime_files = 0
-    for dirpath, _dirnames, filenames in os.walk(runtime_dir):
-        for fn in filenames:
-            full = os.path.join(dirpath, fn)
-            rel = os.path.relpath(full, runtime_dir).replace(os.sep, "/")
-            with open(full, "rb") as fh:
-                entries.append(("%s/python/%s" % (root, rel), fh.read(), 0o755))
-            runtime_files += 1
-
     manifest = {
         "schema": SCHEMA,
         "name": "workbuddy2api-hub",
@@ -140,20 +116,13 @@ def build_portable(version, tag, out_path, source=ROOT, runtime_dir=None,
         "root": root,
         "files": files,
         # Deployment profiles (issue #573). A portable package owns everything
-        # below `files`; an image / rootfs deployment only owns the app layer it
+        # below `files`; a custom Windows installation only owns the app layer it
         # actually runs. Writing the rest into such a root creates files the
-        # image never had, and `pricing/pricing.json` in particular would shadow
+        # installation never had, and `pricing/pricing.json` in particular would shadow
         # wb_pricing.py's inlined snapshot for good.
         "profiles": {"app": [p for p in files
                               if (p.startswith("wb_") and p.endswith(".py"))
                               or p == "dashboard.html"]},
-        # The runtime is one managed subtree rather than 500 manifest lines.
-        "runtime": {
-            "prefix": "python/",
-            "python": portable_runtime.RUNTIME_VERSION,
-            "source": portable_runtime.RUNTIME_URL,
-            "files": runtime_files,
-        },
         "protected": PROTECTED,
     }
     blob = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
@@ -194,23 +163,14 @@ def write_checksums(assets, out_path):
     return lines
 
 
-def download_block(version, zip_name, ipk_name, apk_name):
+def download_block(version, zip_name):
     """The stable help section the issue pins. Keep it short and unchanged."""
     return "\n".join([
         "## 下载说明",
         "",
         "- `%s`" % zip_name,
-        "  - 通用便携版（Python 源码 + 看板 + 启动脚本）",
-        "  - Windows / macOS / Linux",
-        "  - 需要 Python 3.9+",
-        "  - 解压后使用对应平台的启动脚本",
-        "",
-        "- `%s`" % ipk_name,
-        "  - OpenWrt 的 opkg 系安装包",
-        "  - 适用于对应受支持的旧版 OpenWrt 路线",
-        "",
-        "- `%s`" % apk_name,
-        "  - OpenWrt 25.x+ 的 apk-tools 安装包",
+        "  - Windows 应用包（需自行安装 Python 3.9+）",
+        "  - 解压后双击 start-wb-proxy.bat",
         "",
         "- `SHA256SUMS`",
         "  - Release 资产的 SHA-256 校验值",
@@ -233,12 +193,8 @@ def compose_body(existing, block):
     return above + "\n\n" + MARKER + "\n" + block
 
 
-def asset_names(version, release):
-    return (
-        "workbuddy2api-hub-v%s.zip" % version,
-        "workbuddy2api_%s-%s_all.ipk" % (version, release),
-        "workbuddy2api-%s-r%s.apk" % (version, release),
-    )
+def asset_names(version):
+    return ("workbuddy2api-hub-v%s.zip" % version,)
 
 
 def _utf8_stdio():
@@ -268,8 +224,6 @@ def main(argv=None):
     p.add_argument("--tag", required=True)
     p.add_argument("--out", required=True)
     p.add_argument("--source", default=ROOT)
-    p.add_argument("--runtime", required=True,
-                   help="trimmed CPython tree (release/portable_runtime.py prepare)")
     p.add_argument("--root", default=PACKAGE_ROOT,
                    help="folder every packaged file lives under (default %s)" % PACKAGE_ROOT)
     p.add_argument("--epoch", type=int, default=int(os.environ.get("SOURCE_DATE_EPOCH", DEFAULT_EPOCH)))
@@ -280,7 +234,6 @@ def main(argv=None):
 
     b = sub.add_parser("body", help="compose the Draft Release body")
     b.add_argument("--version", required=True)
-    b.add_argument("--release", default="1")
     b.add_argument("--existing", default=None, help="file with the current body ('-' for stdin)")
     b.add_argument("--out", required=True)
 
@@ -293,10 +246,10 @@ def main(argv=None):
 
     if args.cmd == "portable":
         path, files = build_portable(args.version, args.tag, args.out,
-                                     source=args.source, runtime_dir=args.runtime,
+                                     source=args.source,
                                      root=args.root, epoch=args.epoch)
-        print("portable: %s（%d 个受管文件 + python/ 运行时 %s + %s）"
-              % (path, len(files), portable_runtime.RUNTIME_VERSION, MANIFEST_NAME))
+        print("portable: %s（%d 个受管文件 + %s）"
+              % (path, len(files), MANIFEST_NAME))
         print("sha256  : %s" % sha256(path))
         return 0
 
@@ -312,8 +265,8 @@ def main(argv=None):
         elif args.existing and os.path.isfile(args.existing):
             with open(args.existing, encoding="utf-8") as fh:
                 existing = fh.read()
-        zip_name, ipk_name, apk_name = asset_names(args.version, args.release)
-        text = compose_body(existing, download_block(args.version, zip_name, ipk_name, apk_name))
+        zip_name, = asset_names(args.version)
+        text = compose_body(existing, download_block(args.version, zip_name))
         with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
         print("body    : %s（%d 字节）" % (args.out, len(text.encode("utf-8"))))

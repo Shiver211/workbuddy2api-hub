@@ -38,17 +38,12 @@ rem stays silent (pythonw + console_tail.py).
 if /i "%WB_LAUNCH_MODE%"=="console" goto use_python
 
 rem ---- prefer pythonw (GUI subsystem: no console window) ----
-if exist "%HERE%python\pythonw.exe" goto pyw_bundled
 if exist "%HERE%.venv\Scripts\pythonw.exe" goto pyw_venv
 pythonw --version >nul 2>nul
 if not errorlevel 1 goto pyw_path
 pyw --version >nul 2>nul
 if not errorlevel 1 goto pyw_path_pyw
 goto use_python
-
-:pyw_bundled
-set "PYW=%HERE%python\pythonw.exe"
-goto run_silent
 
 :pyw_venv
 set "PYW=%HERE%.venv\Scripts\pythonw.exe"
@@ -99,39 +94,16 @@ exit /b 0
 rem ===========================================================
 rem  Visible-window launcher (fallback, pythonw unavailable)
 rem ===========================================================
-set "PYEXE="
-
-rem ---- 1) bundled runtime (ships with the zip) ----
-if not exist "%HERE%python\python.exe" goto try_path
-"%HERE%python\python.exe" --version >nul 2>nul
-if errorlevel 1 goto try_path
-set "PYEXE=%HERE%python\python.exe"
+call :find_console_python
+if not defined VIEWERPY goto no_python
+set "PYEXE=%VIEWERPY%"
 goto run
 
-:try_path
-rem ---- 2) python on PATH ----
-python --version >nul 2>nul
-if errorlevel 1 goto try_py
-set "PYEXE=python"
-goto run
-
-:try_py
-rem ---- 3) py launcher ----
-py --version >nul 2>nul
-if errorlevel 1 goto try_codex
-set "PYEXE=py"
-goto run
-
-:try_codex
-rem ---- 4) Codex bundled runtimes ----
-call :find_codex
-if defined PYEXE goto run
-
+:no_python
 echo [ERROR] No usable Python found.
 echo.
 echo Options:
-echo   1. Use the packaged zip, which already contains python\
-echo   2. Install Python 3.9+ from https://www.python.org/downloads/
+echo   1. Install Python 3.9+ from https://www.python.org/downloads/
 echo      (tick "Add python.exe to PATH" during setup)
 echo.
 pause
@@ -143,23 +115,6 @@ echo         expected: %SCRIPT%
 echo.
 pause
 exit /b 1
-
-:find_codex
-if not exist "%USERPROFILE%\.cache\codex-runtimes" goto :eof
-for /d %%D in ("%USERPROFILE%\.cache\codex-runtimes\*") do call :probe "%%~D"
-goto :eof
-
-:probe
-if defined PYEXE goto :eof
-for /f "delims=" %%P in ('dir /b /s "%~1\python.exe" 2^>nul') do call :probe_one "%%~P"
-goto :eof
-
-:probe_one
-if defined PYEXE goto :eof
-"%~1" --version >nul 2>nul
-if errorlevel 1 goto :eof
-set "PYEXE=%~1"
-goto :eof
 
 :run
 echo ===========================================================
@@ -189,16 +144,11 @@ rem  VIEWERPY unset when no usable console python exists.
 rem ===========================================================
 :find_console_python
 set "VIEWERPY="
-if exist "%HERE%python\python.exe" goto fcp_bundled
 if exist "%HERE%.venv\Scripts\python.exe" goto fcp_venv
-python --version >nul 2>nul
+python -c "import sys; sys.exit(sys.version_info < (3, 9))" >nul 2>nul
 if not errorlevel 1 goto fcp_path
-py --version >nul 2>nul
+py -c "import sys; sys.exit(sys.version_info < (3, 9))" >nul 2>nul
 if not errorlevel 1 goto fcp_py
-goto :eof
-
-:fcp_bundled
-set "VIEWERPY=%HERE%python\python.exe"
 goto :eof
 
 :fcp_venv

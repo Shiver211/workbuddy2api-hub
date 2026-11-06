@@ -12,7 +12,7 @@ Only the Python standard library is required.
     python3 wb_proxy.py --port 9000
     python3 wb_proxy.py --api-key sk-local # require a bearer token
 Launchers: start-wb-proxy.bat / start-wb-proxy-lan.bat on Windows,
-start-wb-proxy.command (or ./start-wb-proxy.sh) on macOS/Linux.
+
 """
 import argparse
 import base64
@@ -91,15 +91,13 @@ import wb_modelsdev
 import wb_probes
 import wb_updates
 import wb_update_request
-IS_WINDOWS = os.name == "nt"
 
 # ---- 一键配置客户端（wb_agents）的可用性判定（issue #246）----
 # 这个功能写的是「网关进程所在机器」的客户端配置，所以只有在浏览器和网关
-# 同一台机器上打开看板时才成立。服务端 / Docker / OpenWrt 部署下看板都是
+# 同一台机器上打开看板时才成立。远程访问时看板是
 # 远程打开的，改了也到不了用户自己的电脑，还会白白付出探测与常驻的开销。
 # 因此 wb_agents 改成懒加载：只有下面这道闸门放行、路由真的命中才 import。
 _AGENTS_MODULE = None
-_SERVER_DEPLOYMENT = None
 
 
 def agents_module():
@@ -111,45 +109,14 @@ def agents_module():
     return _AGENTS_MODULE
 
 
-def server_deployment_form():
-    """进程是否明显跑在服务端形态（容器 / OpenWrt）。
-
-    只认环境标记；「看板是不是本机打开的」由 agents_client_allowed 按请求
-    来源地址判断。结果缓存——进程活着期间答案不会变。
-    """
-    global _SERVER_DEPLOYMENT
-    if _SERVER_DEPLOYMENT is None:
-        blocked = False
-        try:
-            if os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"):
-                blocked = True
-            elif os.path.exists("/proc/1/cgroup"):
-                with open("/proc/1/cgroup", encoding="utf-8", errors="replace") as fh:
-                    cgroup = fh.read().lower()
-                blocked = any(m in cgroup for m in ("docker", "containerd", "kubepods"))
-        except Exception:
-            blocked = False
-        if not blocked:
-            try:
-                if os.path.exists("/etc/openwrt_release"):
-                    blocked = True
-                elif os.path.exists("/etc/os-release"):
-                    with open("/etc/os-release", encoding="utf-8", errors="replace") as fh:
-                        blocked = "id=openwrt" in fh.read().lower()
-            except Exception:
-                blocked = False
-        _SERVER_DEPLOYMENT = blocked
-    return _SERVER_DEPLOYMENT
 
 
 def agents_client_allowed(client_address):
     """这个来源地址能不能用一键配置：只认回环。
 
-    非回环说明看板是远程打开的（手机、另一台电脑、容器端口映射），此时
-    apply 改的是容器 / 服务器里的配置目录，需求不成立，直接按不可用处理。
+    非回环说明看板是远程打开的（手机、另一台电脑），此时
+    apply 改的是网关机器上的配置目录，需求不成立，直接按不可用处理。
     """
-    if server_deployment_form():
-        return False
     try:
         addr = str(client_address[0])
     except Exception:
@@ -188,17 +155,13 @@ def enrich_agent_models(models, specs):
 
 def launcher_hint(port):
     """Platform-appropriate launcher command for starting on another port."""
-    if IS_WINDOWS:
-        return "start-wb-proxy.bat %d" % port
-    return "./start-wb-proxy.sh %d" % port
+    return "start-wb-proxy.bat %d" % port
 def port_owner_hint(port):
     """Command that lists the process holding a local TCP port."""
-    if IS_WINDOWS:
-        return "netstat -ano | findstr :%d" % port
-    return "lsof -nP -iTCP:%d -sTCP:LISTEN" % port
+    return "netstat -ano | findstr :%d" % port
 def restart_hint():
     """Launcher that stops every running copy first."""
-    return "restart-wb-proxy.bat" if IS_WINDOWS else "./restart-wb-proxy.sh"
+    return "restart-wb-proxy.bat"
 CURRENT_REALM = os.environ.get("WB_PROXY_DEFAULT_REALM", "intl")
 def detect_model_realm(model_id):
     if not model_id:
@@ -264,8 +227,6 @@ def install_console_close_handler():
     for it is event-driven, so unlike polling a parent pid there is no
     chance of a false positive. Harmless when started without a console.
     """
-    if os.name != "nt":
-        return None
     try:
         import ctypes
         from ctypes import wintypes
@@ -296,7 +257,7 @@ def install_console_close_handler():
 # 日志窗口
 #
 # 面板的眼睛按钮改为在新窗口打开运行日志页（?tab=logs）。服务端不再 spawn
-# 任何进程：容器 / Linux 上没有窗口可开，Windows 上也不需要第二个 python 进程
+# 任何进程：日志页直接显示服务端日志，无需第二个 Python 进程
 # （#427）。启动脚本仍可单独拉起 console_tail.py，那是命令行通道，与本按钮无关。
 # ---------------------------------------------------------------------------
 UPSTREAM = "https://www.workbuddy.ai"
@@ -2995,10 +2956,7 @@ def _pair_buffer(state, key):
     then cost two bisections plus one subtraction over `cum`, and appends stay
     O(1). Only the timestamps and the running sum are kept - a row's token
     count is never read again once it is folded into `cum`, so a third list
-    would be pure memory. No new stdlib import either: the packaged runtime's
-    trim contract (portable_runtime.REQUIRED_FILES) already vouches for
-    bisect, while `array` is not in it (builtin on Windows, a shared extension
-    elsewhere) - see tests/_test_release_assets.py.
+    would be pure memory. The lookup uses the standard-library bisect module.
     `head` is the first live index, `base` the token sum of everything trimmed
     away so far - `cum` keeps counting from the very first row ever buffered,
     so a range whose left edge falls on the first live entry has to subtract
@@ -6815,7 +6773,7 @@ def realm_state_file():
 
     Computed on every access rather than cached in a module constant: the
     constant was built from the default ACCOUNTS_DIR at import time, so a
-    later --accounts-dir (or a Docker volume pointing somewhere else) still
+    later --accounts-dir (or another configured data directory) still
     read and wrote the realm switch next to the script - the panel then
     reported an exit that did not match the configured account store.
     """
@@ -12367,7 +12325,7 @@ def _read_product_config_dir(cache_dir):
 #: The desktop client's own product-config endpoint. The cache file that
 #: read_product_config_models() reads is this response written to disk, so
 #: calling it directly is what lets a machine without the desktop app
-#: (Docker, NAS, a headless server) advertise the live catalogue - live
+#: (a Windows host without the desktop client) advertise the live catalogue - live
 #: multipliers included - instead of the narrower endpoint or the bundled
 #: snapshot.
 REMOTE_CONFIG_PATH = "/v3/config"
@@ -16243,7 +16201,7 @@ def schedule_window_probe(account, model, reset_at, cap=False, cap_at=0.0):
     """
     if not reset_at or account is None or not model:
         return False
-    # 以池子的目录为准：--accounts-dir / Docker 卷会把它指到别处，而
+    # 以池子的目录为准：--accounts-dir会把它指到别处，而
     # ACCOUNTS_DIR 只是启动默认值。登记目录必须和 run_due() 读的目录一致，
     # 否则窗口登记在一处、执行在另一处，探针永远不触发。
     accounts_dir = getattr(POOL, "dir", "") or ACCOUNTS_DIR
@@ -21011,7 +20969,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_console_state(self):
         # 按钮不再 spawn 进程，而是在新窗口打开运行日志页。这样 Windows /
-        # macOS / 容器走同一条路，不存在「当前环境开不了窗口」的伪状态（#427）。
+        # 通过浏览器打开日志，不依赖服务端创建窗口（#427）。
         return self._json(200, {"supported": True, "mode": "web", "visible": False})
 
     def _route_console_toggle(self):
@@ -23463,7 +23421,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get_agents(self):
         if not self._agents_client_allowed():
-            # 远程看板（服务端 / Docker / OpenWrt）：一键配置改的是网关所在
+            # 远程看板（另一台机器）：一键配置改的是网关所在
             # 机器的配置目录，到不了用户自己的电脑，直接按不可用返回。
             return self._json(200, {
                 "enabled": False,
@@ -24177,7 +24135,7 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(200, status)
 
     def _route_update_install(self):
-        """Queue the checked stable release for the root-owned systemd worker."""
+        """Queue the checked stable release for the Windows update executor."""
         if not UPDATES:
             return self._json(503, {"ok": False, "msg": "更新检查未运行"})
         status = UPDATES.status()
@@ -24479,7 +24437,7 @@ class Handler(BaseHTTPRequestHandler):
                 "atrest": wb_atrest.status(),
             })
         if payload.get("keyText") is not None:
-            # 手工导入解码密钥：macOS / Linux 上无法回收进程内存，只能让用户贴一次。
+            # 手工导入解码密钥：自动回收失败时允许手工粘贴。
             # 与回收同一道闸——过不了 keyblob 自检就原样报错，不落内存。
             try:
                 key = wb_atrest.adopt_key(payload.get("keyText"),
@@ -26567,18 +26525,8 @@ def _log_startup_summary(args, api_key_generated):
         print()
         print("    Clients: Base URL = the API address above, then paste the key.")
         print()
-        if IS_WINDOWS:
-            print("    If nothing can connect, allow python through the")
-            print("    firewall: run allow-firewall.bat once as administrator.")
-        elif sys.platform == "darwin":
-            print("    If other devices cannot connect, allow incoming")
-            print("    connections for Python (macOS asks automatically the")
-            print("    first time it listens; on macOS 15+ also allow Local")
-            print("    Network access for your terminal). Helper script:")
-            print("    ./allow-firewall.command")
-        else:
-            print("    If other devices cannot connect, open the port in")
-            print("    your firewall (ufw / firewalld) for the LAN subnet.")
+        print("    If nothing can connect, allow python through the")
+        print("    firewall: run allow-firewall.bat once as administrator.")
         print("  " + "=" * 62)
         print()
         sys.stdout.flush()

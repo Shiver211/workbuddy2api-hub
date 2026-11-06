@@ -1,9 +1,6 @@
 name: release-checksums
 
-# The portable green package is built locally (it bundles the Python runtime,
-# which is .gitignored), so CI cannot rebuild the zip. This workflow hashes
-# whatever assets the release already carries and attaches checksums.txt,
-# mirroring the panel's "binaries + checksums" release discipline (M6 F1).
+# 为已发布的 Windows 应用包生成 checksums.txt。
 #
 # If the zip is uploaded *after* the release is published, re-run this
 # workflow from the Actions tab with the tag as input.
@@ -24,32 +21,27 @@ env:
 
 jobs:
   checksums:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Resolve the release tag
         id: rel
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          fi
+          $tag = if ('${{ github.event_name }}' -eq 'release') { '${{ github.event.release.tag_name }}' } else { '${{ github.event.inputs.tag }}' }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
       - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p dist
+          New-Item -ItemType Directory -Force dist | Out-Null
           gh release download "${{ steps.rel.outputs.tag }}" --dir dist --clobber
       - name: checksums
         run: |
-          cd dist
-          rm -f checksums.txt
-          if [ -z "$(ls -A)" ]; then
-            echo "::error::release ${{ steps.rel.outputs.tag }} has no assets to hash"
-            exit 1
-          fi
-          sha256sum * > checksums.txt
-          cat checksums.txt
+          $assets = @(Get-ChildItem dist -File | Where-Object { $_.Name -ne 'checksums.txt' })
+          if ($assets.Count -eq 0) { throw 'Release 没有可计算校验和的资产' }
+          $assets | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Set-Content dist/checksums.txt -Encoding utf8
       - name: Upload checksums.txt
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

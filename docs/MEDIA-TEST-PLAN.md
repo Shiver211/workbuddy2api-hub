@@ -79,7 +79,7 @@ assert P.proxy_slots_view()["chat"] == before["chat"]
 
 ### 5.1 起实例
 
-```bash
+```powershell
 # 8788 被占（本机常驻实例），用隔离端口；数据目录也要隔离，别碰真账号
 python tests/_test_media_http.py       # 自带 free_port + 临时 ACCOUNTS_DIR
 ```
@@ -228,7 +228,7 @@ PR 里逐条说明"改了哪里会红"：
 
 ## 11. 发布门禁（PR 前逐条打勾）
 
-```bash
+```powershell
 # 1) 全量套件（本机已知两个 SSL 基线失败，见下）
 python tests/run_all.py --jobs 4
 #    期望：249 套件；本机 247 passed / 2 failed

@@ -32,7 +32,6 @@ import ctypes
 import json
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -68,126 +67,74 @@ ORPHAN_SECONDS = 120
 #: honouring --timeout and only the harness's own bound can end the run.
 TIMEOUT_ANCHOR = "code = proc.wait(timeout=timeout)"
 
-_WINDOWS = os.name == "nt"
 
-if _WINDOWS:
-    _KERNEL32 = ctypes.windll.kernel32
-    _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-    _PROCESS_TERMINATE = 0x0001
-    _STILL_ACTIVE = 259
-    _TH32CS_SNAPPROCESS = 0x2
+_KERNEL32 = ctypes.windll.kernel32
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_PROCESS_TERMINATE = 0x0001
+_STILL_ACTIVE = 259
+_TH32CS_SNAPPROCESS = 0x2
 
-    class _PROCESSENTRY32(ctypes.Structure):
-        _fields_ = [("dwSize", wintypes.DWORD),
-                    ("cntUsage", wintypes.DWORD),
-                    ("th32ProcessID", wintypes.DWORD),
-                    ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
-                    ("th32ModuleID", wintypes.DWORD),
-                    ("cntThreads", wintypes.DWORD),
-                    ("th32ParentProcessID", wintypes.DWORD),
-                    ("pcPriClassBase", ctypes.c_long),
-                    ("dwFlags", wintypes.DWORD),
-                    ("szExeFile", ctypes.c_char * 260)]
+class _PROCESSENTRY32(ctypes.Structure):
+    _fields_ = [("dwSize", wintypes.DWORD),
+                ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.POINTER(ctypes.c_ulong)),
+                ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", ctypes.c_long),
+                ("dwFlags", wintypes.DWORD),
+                ("szExeFile", ctypes.c_char * 260)]
 
-    def _process_tree():
-        """{pid: parent pid} straight from the OS - no tasklist, no taskkill."""
-        snapshot = _KERNEL32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
-        table = {}
-        entry = _PROCESSENTRY32()
-        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
-        ok = _KERNEL32.Process32First(snapshot, ctypes.byref(entry))
-        while ok:
-            table[entry.th32ProcessID] = entry.th32ParentProcessID
-            ok = _KERNEL32.Process32Next(snapshot, ctypes.byref(entry))
-        _KERNEL32.CloseHandle(snapshot)
-        return table
-
-    def alive(pid):
-        """Liveness through the OS, not tasklist.
-
-        A locked-down host answers "Access denied" to tasklist and prints
-        nothing, and a helper that greps that output then calls every pid dead.
-        OpenProcess/GetExitCodeProcess answers about the process itself.
-        """
-        handle = _KERNEL32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION,
-                                       False, pid)
-        if not handle:
-            return False
-        try:
-            code = ctypes.c_ulong()
-            if not _KERNEL32.GetExitCodeProcess(handle, ctypes.byref(code)):
-                return False
-            return code.value == _STILL_ACTIVE
-        finally:
-            _KERNEL32.CloseHandle(handle)
-
-    def terminate_pid(pid):
-        """Kill one pid through the OS, with no shell-out to taskkill.
-
-        taskkill is what the runner uses, and the host that refuses it refuses
-        the harness too; the last line of defence cannot be the same call.
-        """
-        handle = _KERNEL32.OpenProcess(_PROCESS_TERMINATE, False, pid)
-        if not handle:
-            return False
-        try:
-            return bool(_KERNEL32.TerminateProcess(handle, 1))
-        finally:
-            _KERNEL32.CloseHandle(handle)
-else:
-    def _process_tree():
-        """{pid: parent pid} from /proc, which is where Linux CI lives."""
-        return _proc_process_tree()
-
-    def alive(pid):
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            return False
-        return True
-
-    def terminate_pid(pid):
-        try:
-            os.kill(pid, signal.SIGKILL)
-            return True
-        except OSError:
-            return False
-
-
-def _parse_proc_stat(data):
-    """The parent pid out of one /proc/<pid>/stat line.
-
-    Split on the *last* ')' rather than on whitespace: the command name sits in
-    parentheses and may itself contain spaces and parentheses, and everything
-    after it is fixed-position (state, then ppid).
-    """
-    rest = data.rsplit(b")", 1)[1].split()
-    return int(rest[1])
-
-
-def _proc_process_tree(proc_root="/proc"):
-    """{pid: parent pid} from a /proc-shaped tree.
-
-    Parameterised on the root so the Linux branch can be exercised from any
-    platform against a synthetic tree, instead of only ever failing on CI. The
-    shape has to match the Windows branch: _descendants() reads one mapping and
-    must not have to know which platform filled it in.
-    """
-    try:
-        # Sorted, not raw listdir order: readdir is arbitrary on Linux (hash
-        # order), so an unsorted walk makes _descendants' sibling order depend
-        # on the filesystem. That passed on Windows and flaked on CI.
-        names = sorted((n for n in os.listdir(proc_root) if n.isdigit()), key=int)
-    except OSError:
-        return None
+def _process_tree():
+    """{pid: parent pid} straight from the OS - no tasklist, no taskkill."""
+    snapshot = _KERNEL32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
     table = {}
-    for name in names:
-        try:
-            with open(os.path.join(proc_root, name, "stat"), "rb") as fh:
-                table[int(name)] = _parse_proc_stat(fh.read())
-        except (OSError, IndexError, ValueError):
-            continue
+    entry = _PROCESSENTRY32()
+    entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
+    ok = _KERNEL32.Process32First(snapshot, ctypes.byref(entry))
+    while ok:
+        table[entry.th32ProcessID] = entry.th32ParentProcessID
+        ok = _KERNEL32.Process32Next(snapshot, ctypes.byref(entry))
+    _KERNEL32.CloseHandle(snapshot)
     return table
+
+def alive(pid):
+    """Liveness through the OS, not tasklist.
+
+    A locked-down host answers "Access denied" to tasklist and prints
+    nothing, and a helper that greps that output then calls every pid dead.
+    OpenProcess/GetExitCodeProcess answers about the process itself.
+    """
+    handle = _KERNEL32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION,
+                                   False, pid)
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        if not _KERNEL32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == _STILL_ACTIVE
+    finally:
+        _KERNEL32.CloseHandle(handle)
+
+def terminate_pid(pid):
+    """Kill one pid through the OS, with no shell-out to taskkill.
+
+    taskkill is what the runner uses, and the host that refuses it refuses
+    the harness too; the last line of defence cannot be the same call.
+    """
+    handle = _KERNEL32.OpenProcess(_PROCESS_TERMINATE, False, pid)
+    if not handle:
+        return False
+    try:
+        return bool(_KERNEL32.TerminateProcess(handle, 1))
+    finally:
+        _KERNEL32.CloseHandle(handle)
+
+
+
+
 
 
 def _descendants(root, table=None):
@@ -195,8 +142,7 @@ def _descendants(root, table=None):
 
     Windows keeps the creator's pid in a child's parent field even after that
     parent exits, so the walk still finds an orphan whose parent is already
-    gone. On POSIX this needs /proc; without it the caller's group kill is the
-    only tree mechanism, which is why probes register their own pids as well.
+    gone. Probes also register their own pids for cleanup.
 
     `table` is a {pid: parent pid} mapping and exists so the traversal can be
     tested without the platform it happens to be running on.
@@ -231,9 +177,7 @@ def new_group_kwargs():
     can take that runner's tree back, and run_all.py gives every suite its own
     group for exactly the same purpose.
     """
-    if _WINDOWS:
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
+    return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
 
 
 def kill_owned_tree(proc):
@@ -250,13 +194,6 @@ def kill_owned_tree(proc):
     if proc.poll() is not None:
         return
     try:
-        if not _WINDOWS:
-            # The runner leads its own session, so its group catches anything
-            # that did not detach into a group of its own.
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except OSError:
-                pass
         for pid in _descendants(proc.pid):
             terminate_pid(pid)
     except Exception:
@@ -337,17 +274,10 @@ def host_can_kill_trees():
         grand = read_pids(pid_file)["child"]
 
         permitted = False
-        if _WINDOWS:
-            done = subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                                  stdout=subprocess.DEVNULL,
-                                  stderr=subprocess.DEVNULL, timeout=30)
-            permitted = done.returncode == 0
-        else:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                permitted = True
-            except OSError:
-                permitted = False
+        done = subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                              stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=30)
+        permitted = done.returncode == 0
 
         try:
             proc.wait(timeout=10)
@@ -524,7 +454,7 @@ class RunnerContractTests(unittest.TestCase):
     def test_the_process_table_is_pid_to_parent(self):
         """Both platform branches must hand _descendants the same shape.
 
-        Windows walks Toolhelp32 and POSIX parses /proc. A mismatch between the
+        Windows walks Toolhelp32. A mismatch between the
         two only shows up on the platform the author is not sitting in front
         of, which is exactly how a cleanup path rots unnoticed.
         """
@@ -541,42 +471,8 @@ class RunnerContractTests(unittest.TestCase):
         self.assertIn(os.getpid(), _descendants(os.getpid()),
                       "_descendants dropped the root it was given")
 
-    def test_the_proc_stat_parser_survives_an_awkward_command_name(self):
-        """The Linux branch is the one a local Windows run cannot exercise."""
-        line = b"4242 (python (weird) name) S 99 4242 4242 0 -1 4194560 0 0"
-        self.assertEqual(_parse_proc_stat(line), 99)
-        self.assertEqual(_parse_proc_stat(b"7 (sh) R 1 7 7 0 -1 0 0"), 1)
 
-    def test_the_proc_reader_gives_the_same_shape_as_the_other_platform(self):
-        """A synthetic /proc, so the Linux reader is checked everywhere.
 
-        The two branches have to agree on {pid: parent pid}; when they did not,
-        nothing on Windows noticed and the cleanup path only fell over on CI.
-        """
-        root = tempfile.mkdtemp(prefix="fake-proc-")
-        try:
-            for pid, ppid in ((11, 1), (22, 11), (33, 11)):
-                os.makedirs(os.path.join(root, str(pid)))
-                with open(os.path.join(root, str(pid), "stat"), "wb") as fh:
-                    fh.write(b"%d (python) S %d %d %d 0 -1 0 0"
-                             % (pid, ppid, pid, pid))
-            # Neither of these may contribute a row: a non-numeric directory
-            # and a stat file that cannot be parsed.
-            os.makedirs(os.path.join(root, "not-a-pid"))
-            os.makedirs(os.path.join(root, "44"))
-            with open(os.path.join(root, "44", "stat"), "wb") as fh:
-                fh.write(b"garbage")
-
-            table = _proc_process_tree(root)
-            self.assertEqual(table, {11: 1, 22: 11, 33: 11})
-            self.assertEqual(_descendants(11, table), [22, 33, 11])
-        finally:
-            shutil.rmtree(root, ignore_errors=True)
-
-    def test_the_proc_reader_reports_no_table_when_proc_is_absent(self):
-        """macOS and friends: no /proc means "fall back", not "empty tree"."""
-        self.assertIsNone(_proc_process_tree(os.path.join(tempfile.gettempdir(),
-                                                          "no-such-proc-root")))
 
     def test_descendants_are_returned_deepest_first(self):
         """The order decides what is reachable when: kill a parent first and

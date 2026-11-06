@@ -169,7 +169,7 @@ class TLSVerifyError(RuntimeError):
 
 TLS_VERIFY_HINT = (
     "TLS 证书校验失败：上游证书链里有本机不信任的证书。常见于公司代理、"
-    "Clash/Surge 等 HTTPS 解密，或 macOS 上 Python 没读到系统钥匙串里的根证书。"
+    "Clash 等 HTTPS 解密，或 Python 未加载代理使用的根证书。"
     "把签发该证书的根证书导出为 PEM，设置环境变量 "
     "WB_CA_BUNDLE=/path/to/ca.pem 后重启网关；也可以设置 SSL_CERT_FILE。"
 )
@@ -5427,28 +5427,11 @@ def desktop_refresh_token(auth, key):
 
 
 def desktop_auth_dirs():
-    """Directories where the desktop client may keep its *.info credentials.
-
-    Windows uses %LOCALAPPDATA%\\CodeBuddyExtension\\Data\\Public\\auth.
-    macOS builds of the client keep the same layout under Application
-    Support, so probe the plausible app names there too. Missing
-    directories are harmless: callers only read the files that exist.
-    """
-    dirs = []
-    if os.name == "nt":
-        local = os.environ.get("LOCALAPPDATA")
-        if not local:
-            local = os.path.join(os.path.expanduser("~"), "AppData", "Local")
-        dirs.append(os.path.join(local, "CodeBuddyExtension", "Data", "Public", "auth"))
-    else:
-        home = os.path.expanduser("~")
-        base = (os.path.join(home, "Library", "Application Support")
-                if sys.platform == "darwin"
-                else os.path.join(home, ".local", "share"))
-        for app in ("CodeBuddyExtension", "WorkBuddy", "CodeBuddy"):
-            dirs.append(os.path.join(base, app, "Data", "Public", "auth"))
-            dirs.append(os.path.join(base, app, "auth"))
-    return dirs
+    """Windows 桌面客户端保存 *.info 凭据的目录。"""
+    local = os.environ.get("LOCALAPPDATA")
+    if not local:
+        local = os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    return [os.path.join(local, "CodeBuddyExtension", "Data", "Public", "auth")]
 
 def desktop_auth_dir():
     """First candidate credential directory (kept for older callers)."""

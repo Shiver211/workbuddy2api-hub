@@ -3,7 +3,7 @@
 
 这个模块回答一个问题：配置的 GitHub 仓库有没有比当前运行版本更新的稳定版？
 
-它只负责发现更新。安装请求由另一个 panel-only 路由交给受限 systemd 服务；
+它只负责发现更新。安装请求由另一个 panel-only 路由交给Windows 更新执行器；
 这个模块本身仍不下载、不解包、不替换文件，也不重启进程。
 
 三条硬约束：
@@ -30,7 +30,7 @@ import urllib.request
 
 import wb_settings
 
-# 默认仍指向官方仓库。自建 fork 的 systemd 服务可通过 WB_UPDATE_REPO 指定
+# 默认仍指向官方仓库。自建 fork 的更新执行器可通过 WB_UPDATE_REPO 指定
 # 自己的 Release 源；该值只允许 owner/repo 形状，避免把更新请求导向任意主机。
 DEFAULT_REPOSITORY = "ardeyouxipianyi/workbuddy2api-hub"
 REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$")

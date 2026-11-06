@@ -12,7 +12,7 @@ X-User-Id 的 sha256 前 16 位）：同一个出口上的两个账号绝不共�
 为什么要自建池：CPython 的 urllib.request.AbstractHTTPHandler.do_open 会写死
 headers["Connection"] = "close"（它担心 addinfourl 读不干净持久连接），所以在
 urllib 这条路上连接**不可能**复用——每个出站请求都要重新走一次 TCP+TLS 握手。
-真机（OpenWrt / Celeron N2840）裸握手实测：TCP connect 55.5ms、TCP+TLS 118.0ms
+真机（Celeron N2840）裸握手实测：TCP connect 55.5ms、TCP+TLS 118.0ms
 （4 次取最小），是请求路径上最大的一笔开销，比全部本地 CPU 项之和还大；多轮对话
 每轮都要付一遍。这里绕开 do_open，直接拿 http.client 的连接来复用，其余语义
 （代理 CONNECT、Proxy-Authorization、Host / Content-Length / Accept-Encoding 头、
@@ -67,7 +67,7 @@ def enabled():
 def _pool_size():
     """每个池键最多保留的空闲连接数（默认 2）。
 
-    2 条足以覆盖「一条在流式读、一条刚还回来」的常见重叠；再多只会让 OpenWrt
+    2 条足以覆盖「一条在流式读、一条刚还回来」的常见重叠；再多只会让低内存设备
     这种小内存设备为僵尸连接多留 socket 与内核缓冲，收益很小。
     """
     try:
@@ -239,8 +239,7 @@ def _connection_looks_alive(conn):
       - BlockingIOError / SSLWantReadError：对端什么都没发，干净的空闲连接；
       - 读到 b""（FIN / close_notify）、抛连接错误、或读到数据（协议已污染）：
         都不能复用，判死。读到的那一个字节反正属于要丢弃的连接，无所谓。
-    不用 select：交付运行时是精简过的 CPython，import 面越小越好；这里只需要
-    「有数据没有」这一个事实，非阻塞试读就是最短路径。TLS 缓冲里还压着没读走的
+    这里只需要判断「有数据没有」，非阻塞试读即可。TLS 缓冲里还压着没读走的
     数据同样不干净，先查 pending()。
     """
     sock = getattr(conn, "sock", None)
@@ -544,7 +543,7 @@ def _proxy_bypassed(host):
     """目标主机是否在系统代理旁路清单里（判定与 urllib ProxyHandler 完全一致）。
 
     urllib 的 proxy_open 在套用代理前会先问 proxy_bypass(host)：Windows 看注册表
-    的 ProxyOverride（默认常含 <local> / 127.*），Linux 看 no_proxy 环境变量。
+    的 ProxyOverride（默认常含 <local> / 127.*），也支持 no_proxy 环境变量。
     池这边必须做同样的判断，否则同一份配置下「改动前直连、改动后走代理」——
     出站路径变了，而这不是本 PR 要改的东西。旁路命中时按直连处理，连接也归到
     直连那个池键，与不配代理的账号共用。

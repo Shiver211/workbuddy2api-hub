@@ -24,7 +24,7 @@ channel` 是**请求内容或客户端身份**没有通过渠道校验，不是�
 
 请提供以下信息，且**不要附带完整 API Key、Authorization、Cookie 或设备 token**：
 
-- 网关版本、宿主系统（Windows / Ubuntu / macOS）、启动方式；
+- 网关版本、宿主系统（Windows 版本）、启动方式；
 - 客户端与协议（Codex / Claude Code / OpenAI SDK；`/v1/responses` 或
   `/v1/chat/completions`）；
 - `model`、`stream`、是否带 `tools` / 图片 / MCP；
@@ -40,13 +40,6 @@ channel` 是**请求内容或客户端身份**没有通过渠道校验，不是�
 Select-String -Path usage\usage.jsonl -Pattern '<requestId>|11-128'
 # 面板「日志」页导出，或带鉴权请求：
 Invoke-WebRequest http://127.0.0.1:8788/logs/export -OutFile wb-proxy.log -Headers @{Authorization="Bearer <API_KEY>"}
-```
-
-```bash
-# Linux / macOS
-rg -n '<requestId>|11-128' usage/usage.jsonl
-# 面板「日志」页导出，或带鉴权请求：
-curl -sS -H "Authorization: Bearer <API_KEY>" http://127.0.0.1:8788/logs/export -o wb-proxy.log
 ```
 
 `usage.jsonl` 的失败行通常带 `status`、`message`、`account`、`realm`、
@@ -67,14 +60,6 @@ $env:WB_DUMP_11_128 = "full"
 Get-ChildItem usage\11-128-dumps
 ```
 
-Linux / macOS：
-
-```bash
-WB_DUMP_11_128=full ./start-wb-proxy.sh 8788
-# 复现一次失败后：
-ls usage/11-128-dumps
-```
-
 两种取值：
 
 - `WB_DUMP_11_128=1`：只写摘要。包含消息角色 / 长度 / 哈希、工具名、已知指纹命中、
@@ -91,13 +76,13 @@ Authorization、API Key、Cookie、设备 token 等头在这两种模式下都�
 但把 `Authorization`、`X-API-Key`、`X-Device-Token`、用户/企业标识等字段
 替换成 `[REDACTED]`：
 
-```bash
+```powershell
 python scripts/diagnose_identity.py --accounts-dir accounts
 ```
 
 只看某个账号或预览另一种身份：
 
-```bash
+```powershell
 python scripts/diagnose_identity.py --accounts-dir accounts --uid <uid前8位>
 python scripts/diagnose_identity.py --accounts-dir accounts --product cli
 ```
@@ -110,7 +95,7 @@ python scripts/diagnose_identity.py --accounts-dir accounts --product cli
 - `headers`：已脱敏的完整头族，可直接和另一台机器对比；
 - `environment.effective.os` / `arch` / `node`：进程当前解析出的 SDK 宿主值。
 
-把这份 JSON 与 Windows / Ubuntu 两边的结果并排比较。**WB 和 VSC 身份不发
+把这份 JSON 与 两台 Windows 机器的结果并排比较。**WB 和 VSC 身份不发
 `x-stainless-*`**，所以在这两种身份上，设置 `WB_IDENTITY_OS` /
 `WB_IDENTITY_ARCH` 不会改变出站头；不要把它当成通用修复。
 
@@ -119,7 +104,7 @@ python scripts/diagnose_identity.py --accounts-dir accounts --product cli
 ### 4.1 最小请求
 
 先用不含系统提示词、工具和历史的最小请求确认基础链路。下面示例里的
-`$env:WB_API_KEY` / `$WB_API_KEY` 请替换成面板里创建的 API Key，不要把真实
+`$env:WB_API_KEY` 请替换成面板里创建的 API Key，不要把真实
 Key 贴进 issue。
 
 PowerShell：
@@ -128,15 +113,6 @@ PowerShell：
 $headers = @{ Authorization = "Bearer $env:WB_API_KEY"; "Content-Type" = "application/json" }
 $body = '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}],"stream":false}'
 Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8788/v1/chat/completions' -Headers $headers -Body $body
-```
-
-Linux / macOS：
-
-```bash
-curl -sS http://127.0.0.1:8788/v1/chat/completions \
-  -H "Authorization: Bearer $WB_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hi"}],"stream":false}'
 ```
 
 结果解释：
@@ -164,17 +140,10 @@ You are a helpful assistant. Answer directly and concisely.
 
 如果账号卡显示 **CLI**，可在一台机器上临时覆盖 SDK 平台字段并重启网关：
 
-```bash
-export WB_IDENTITY_OS=Windows
-export WB_IDENTITY_ARCH=x64
-export WB_IDENTITY_NODE_VERSION=v22.21.1
-./start-wb-proxy.sh 8788
-```
-
 Windows PowerShell：
 
 ```powershell
-$env:WB_IDENTITY_OS = "Linux"
+$env:WB_IDENTITY_OS = "Windows"
 $env:WB_IDENTITY_ARCH = "x64"
 $env:WB_IDENTITY_NODE_VERSION = "v22.21.1"
 .\start-wb-proxy.bat 8788
@@ -182,7 +151,7 @@ $env:WB_IDENTITY_NODE_VERSION = "v22.21.1"
 
 这是一项**对照实验**，不是已证实的通用修复。只有 `product=cli` 的请求会带
 这些字段；WB / VSC 身份不要据此修改平台变量。实验后用第 3 节脚本确认
-`environment.effective.os` 和 `headers.x-stainless-os` 确实变了。
+有效身份字段与预期设置一致。
 
 ### 4.4 国内版设备 token
 
@@ -203,7 +172,7 @@ $env:WB_IDENTITY_NODE_VERSION = "v22.21.1"
 3. 最小请求的结果（成功 / 失败 + 状态码）；
 4. 提示词模式对照实验的结果；
 5. `usage/usage.jsonl` 对应失败行，以及网关日志中的 `request error` 行；
-6. Windows 与 Ubuntu 的 `environment`、`product`、`headers` 差异。
+6. 两台 Windows 机器的 `environment`、`product`、`headers` 差异。
 7. 如维护者要求，附上 `usage/11-128-dumps/` 里本次失败对应的摘要；分享 `full`
    生成的 body 前先检查其中的提示词与业务数据。
 

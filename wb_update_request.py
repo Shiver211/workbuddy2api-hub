@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Panel-side request/status bridge for the privileged update service.
-
-The gateway process stays unprivileged. It can create one validated request in
-a root-owned sticky directory and read status files written by the updater.
-It never runs systemctl or writes application files itself.
-"""
+"""Windows 面板更新请求：便携助手或已注册的外部执行器。"""
 
 import json
 import os
@@ -17,15 +12,9 @@ import wb_update_portable
 
 
 REQUEST_DIR = os.environ.get(
-    "WB_UPDATE_REQUEST_DIR", "/run/workbuddy2api-hub-updater")
+    "WB_UPDATE_REQUEST_DIR", os.path.join(wb_update_portable.app_root(), "updates"))
 REQUEST_FILE = os.path.join(REQUEST_DIR, "request.json")
 STATUS_FILE = os.path.join(REQUEST_DIR, "status.json")
-#: Inventory the root updater keeps next to status.json, so the panel can offer
-#: the backups that live under its root-only backup directory.
-BACKUPS_FILE = os.path.join(REQUEST_DIR, "backups.json")
-PATH_UNIT_FILE = "/etc/systemd/system/workbuddy2api-hub-updater.path"
-ENABLED_UNIT_LINK = ("/etc/systemd/system/multi-user.target.wants/"
-                     "workbuddy2api-hub-updater.path")
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 ACTIVE_STATES = frozenset((
@@ -44,14 +33,6 @@ class UpdateRequestError(Exception):
     """A safe, user-visible reason an install request was refused."""
 
 
-def _systemd_enabled():
-    """Only enable the systemd path after the administrator installs its unit."""
-    return (
-        str(os.environ.get("WB_UPDATE_INSTALL_ENABLED") or "").strip() == "1"
-        and os.path.isdir(REQUEST_DIR)
-        and os.path.exists(PATH_UNIT_FILE)
-        and os.path.exists(ENABLED_UNIT_LINK)
-    )
 
 
 def external_enabled():
@@ -72,9 +53,8 @@ def external_enabled():
 
 
 def install_enabled():
-    """The panel may install when either the unit or a portable package is here."""
-    return (_systemd_enabled() or external_enabled()
-            or wb_update_portable.available())
+    """The panel may install with a portable helper or registered executor."""
+    return (external_enabled() or wb_update_portable.available())
 
 
 def _version_tuple(tag):
@@ -82,7 +62,7 @@ def _version_tuple(tag):
     return tuple(int(value) for value in match.groups()) if match else None
 
 
-def _read_root_status():
+def _read_executor_status():
     flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | _NOFOLLOW
     try:
         fd = os.open(STATUS_FILE, flags)
@@ -92,8 +72,7 @@ def _read_root_status():
         return {"state": "unavailable", "version": "", "message": ""}
     try:
         info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or getattr(info, "st_uid", -1) != 0
-                or info.st_size > 8192 or (stat.S_IMODE(info.st_mode) & 0o022)):
+        if (not stat.S_ISREG(info.st_mode) or info.st_size > 8192):
             return {"state": "unavailable", "version": "", "message": ""}
         with os.fdopen(fd, "rb", closefd=False) as stream:
             payload = json.loads(stream.read(8193).decode("utf-8"))
@@ -116,69 +95,12 @@ def _read_root_status():
     return result
 
 
-def _int(value, default=0):
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
 
 
-def _root_backups():
-    """The root updater's backup inventory (systemd layout), or [] when absent.
-
-    The folders themselves sit under a root-only backup directory, so the
-    gateway cannot list them; the updater publishes this file next to
-    status.json instead, and it gets the same ownership and mode checks as the
-    status file before anything in it is believed.
-    """
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | _NOFOLLOW
-    try:
-        fd = os.open(BACKUPS_FILE, flags)
-    except OSError:
-        return []
-    try:
-        info = os.fstat(fd)
-        if (not stat.S_ISREG(info.st_mode) or getattr(info, "st_uid", -1) != 0
-                or info.st_size > 65536 or (stat.S_IMODE(info.st_mode) & 0o022)):
-            return []
-        with os.fdopen(fd, "rb", closefd=False) as stream:
-            payload = json.loads(stream.read(65537).decode("utf-8"))
-    except (OSError, UnicodeError, ValueError, TypeError):
-        return []
-    finally:
-        os.close(fd)
-    items = payload.get("backups") if isinstance(payload, dict) else None
-    if not isinstance(items, list):
-        return []
-    out = []
-    for item in items[:8]:
-        if not isinstance(item, dict):
-            continue
-        version = str(item.get("version") or "")
-        if not VERSION_RE.fullmatch(version):
-            continue
-        out.append({
-            "version": version,
-            "created_at": str(item.get("created_at") or "")[:32],
-            "files": _int(item.get("files")),
-            "complete": item.get("complete") is True,
-            "reason": str(item.get("reason") or "")[:120],
-            "size_mb": _int(item.get("size_mb")),
-            "source": "systemd",
-        })
-    return out
 
 
 def backups():
-    """Retained backups the panel may offer to restore, newest first.
-
-    Which executor is registered decides where they come from: the portable and
-    external executors keep them inside the application directory (readable by
-    the gateway), the systemd worker keeps them under /var/backups and publishes
-    an inventory instead.
-    """
-    if _systemd_enabled():
-        return {"source": "systemd", "backups": _root_backups()}
+    """返回当前 Windows 安装保留的本地备份。"""
     if external_enabled() or wb_update_portable.available():
         root = os.path.dirname(os.path.abspath(__file__))
         entries = wb_update_portable.list_backups(root)
@@ -189,18 +111,7 @@ def backups():
 
 
 def apply_keep_backups(keep):
-    """Prune retained backups down to `keep` right after the setting changed.
-
-    Returns the folder versions that were removed. A deployment whose backups
-    live outside the application directory (the systemd worker) prunes them on
-    its next run instead, because the gateway cannot delete root-owned files.
-
-    The transient copy a failed rollback left behind goes too: it is never a
-    rollback entry, and a setting that says "keep nothing" must not leave a
-    full copy of the app behind.
-    """
-    if _systemd_enabled():
-        return []
+    """设置变更后立即清理过量备份和回退临时副本。"""
     root = os.path.dirname(os.path.abspath(__file__))
     try:
         shutil.rmtree(os.path.join(wb_update_portable.backups_dir(root),
@@ -215,7 +126,7 @@ def apply_keep_backups(keep):
 
 
 def status():
-    if _systemd_enabled() or external_enabled():
+    if external_enabled():
         return _bridge_status()
     if wb_update_portable.available():
         return {"install_enabled": True,
@@ -225,7 +136,7 @@ def status():
 
 
 def _bridge_status():
-    result = {"install_enabled": True, "installation": _read_root_status()}
+    result = {"install_enabled": True, "installation": _read_executor_status()}
     current = result["installation"]
     if (os.path.exists(REQUEST_FILE)
             and current.get("state") not in ACTIVE_STATES):
@@ -241,20 +152,19 @@ def _request_fields(version, port):
     fields = {
         "version": version,
         "requested_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        # The external executor needs to know which process to stop and
-        # which directory to replace; the systemd worker ignores extras.
+        # 外部执行器需要停止的进程及其应用目录。
         "pid": os.getpid(),
         "port": int(port),
         "root": os.path.dirname(os.path.abspath(__file__)),
     }
-    # 镜像 / 自建 rootfs 部署只拥有应用层（wb_*.py + dashboard.html）。把档位随
-    # 请求带下去，执行者就不会再写进 start-wb-proxy*、ops/ 和 pricing/pricing.json
+    # 自定义 Windows 安装只拥有应用层（wb_*.py + dashboard.html）。把档位随
+    # 请求带下去，执行者就不会再写进 start-wb-proxy* 和 pricing/pricing.json
     # —— 后者一旦落盘就会盖掉 wb_pricing.py 的内联快照，而且两份没有同步机制
     # （#573）。便携包照旧按整份清单更新。
     try:
-        # 便携包的清单在包根、代码在 `wb-proxy/` 子目录；镜像 / rootfs 部署的
+        # 便携包的清单在包根、代码在 `wb-proxy/` 子目录；自定义 Windows 安装的
         # 清单（如果有）和代码在同一层。用这个结构差异判断，而不是看清单文件
-        # 是否存在——旧执行者会把清单写进 /app，之后再判断就会误认成便携包。
+        # 是否存在——旧执行者会把清单写进应用目录，之后再判断就会误认成便携包。
         if (wb_update_portable.package_root()
                 == wb_update_portable.app_root()):
             fields["profile"] = "app"
@@ -288,7 +198,7 @@ def _queue_request(fields):
 
 
 def request_install(tag, current_version, port=8788, lan=False, repo=None):
-    """Queue a stable tag for the root updater; caller must panel-authenticate."""
+    """Queue a stable tag for the updater; caller must panel-authenticate."""
     if not install_enabled():
         raise UpdateRequestError("安装更新服务尚未配置")
     target = _version_tuple(tag)
@@ -296,7 +206,7 @@ def request_install(tag, current_version, port=8788, lan=False, repo=None):
     if target is None or current is None or target <= current:
         raise UpdateRequestError("目标版本无效或不高于当前版本")
 
-    if not _systemd_enabled() and not external_enabled():
+    if not external_enabled():
         try:
             return wb_update_portable.request_install(
                 tag, current_version, port=port, lan=lan, repo=repo)
@@ -339,7 +249,7 @@ def request_rollback(version, current_version, port=8788, lan=False):
                for entry in backups()["backups"]):
         raise UpdateRequestError("没有可回退到 %s 的完整备份" % target)
 
-    if not _systemd_enabled() and not external_enabled():
+    if not external_enabled():
         try:
             return wb_update_portable.request_rollback(
                 target, current_version, port=port, lan=lan)

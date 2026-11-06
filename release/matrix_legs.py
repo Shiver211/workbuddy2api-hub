@@ -3,7 +3,7 @@
 """The test-matrix legs a release has to wait for (issue #28).
 
 A release may only be written when the *whole* existing matrix passed on the
-target commit - Ubuntu 3.9, Ubuntu 3.12 and Windows 3.12 today. Trusting the
+target commit - Windows 3.9 and Windows 3.12 today. Trusting the
 tests workflow's overall conclusion is not enough: it stays green if a leg is
 dropped from the matrix, and that would quietly weaken the release gate.
 

@@ -2,7 +2,7 @@ name: tests
 
 # Pushes are covered on main only; every other branch (and every pull request,
 # including ones from forks) is covered by pull_request. Listing both events
-# without the branch filter ran each update twice - two full windows + ubuntu
+# without the branch filter ran each update twice - two full Windows
 # matrices for the same commit.
 on:
   push:
@@ -35,15 +35,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The README advertises Python 3.9+, so the floor is exercised on
-          # Linux; the primary platform (Windows) runs the current release.
-          # Pinned: ubuntu-latest moved to 26.04, where setup-python has no
-          # 3.9 build. 24.04 is the image this leg ran on before the switch;
-          # 22.04's prebuilt 3.9 finds no system CA store (0 certs).
-          - os: ubuntu-24.04
+          - os: windows-latest
             python: "3.9"
-          - os: ubuntu-latest
-            python: "3.12"
           - os: windows-latest
             python: "3.12"
     steps:
@@ -86,25 +79,18 @@ jobs:
   version-assert:
     name: tag matches source version
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - name: Assert tag == source version
         run: |
-          set -euo pipefail
-          OVERVIEW=$(grep -oP '"version"\s*:\s*"\K[^"]+' wb_proxy.py | head -n1 || true)
-          SERVER=$(grep -oP 'server_version\s*=\s*"wb-proxy/\K[^"]+' wb_proxy.py | head -n1 || true)
-          echo "source: overview=$OVERVIEW server=$SERVER tag=$GITHUB_REF_NAME"
-          if [ -z "$OVERVIEW" ] || [ "$OVERVIEW" != "$SERVER" ]; then
-            echo "::error::source version strings disagree ($OVERVIEW vs $SERVER)"
-            exit 1
-          fi
-          TAG="${GITHUB_REF_NAME#v}"
-          if [[ "$GITHUB_REF_NAME" == *-ci ]]; then
-            echo "rehearsal tag (-ci): skipping tag==version assertion (source=$OVERVIEW)"
-          elif [ "$TAG" != "$OVERVIEW" ]; then
-            echo "::error::tag $GITHUB_REF_NAME != source version $OVERVIEW (bump the source first)"
-            exit 1
-          else
-            echo "version assert OK: $TAG"
-          fi
+          $ErrorActionPreference = 'Stop'
+          $source = Get-Content wb_proxy.py -Raw
+          $OVERVIEW = [regex]::Match($source, '"version"\s*:\s*"([^"]+)"').Groups[1].Value
+          $SERVER = [regex]::Match($source, 'server_version\s*=\s*"wb-proxy/([^"]+)"').Groups[1].Value
+          if (-not $OVERVIEW -or $OVERVIEW -ne $SERVER) { throw "源码版本不一致" }
+          $TAGVER = $env:GITHUB_REF_NAME -replace '^v', ''
+          $REHEARSAL = $env:GITHUB_REF_NAME.EndsWith('-ci')
+          if (-not $REHEARSAL -and $TAGVER -ne $OVERVIEW) { throw "tag 与源码版本不一致" }
+          "version=$OVERVIEW" >> $env:GITHUB_OUTPUT
+          "rehearsal=$($REHEARSAL.ToString().ToLower())" >> $env:GITHUB_OUTPUT

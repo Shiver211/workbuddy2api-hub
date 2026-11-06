@@ -7,7 +7,7 @@
 ## 1. 核心设计原则
 
 1. **纯标准库实现 (Zero Dependencies)**：
-   网关作为绿色免安装工具，不能为了读写 YAML/TOML 而引入 `pyyaml`、`tomli`、`tomlkit` 等三方轮子。所有配置解析与写入完全使用 Python 标准库（`os`, `re`, `json`, `shutil`, `hashlib`, `time`）。
+   网关使用系统 Python 运行，不能为了读写 YAML/TOML 而引入 `pyyaml`、`tomli`、`tomlkit` 等三方轮子。所有配置解析与写入完全使用 Python 标准库（`os`, `re`, `json`, `shutil`, `hashlib`, `time`）。
 2. **非破坏性文本级编辑 (Non-destructive Text-level Editing)**：
    用户的配置文件中往往包含个人手写的注释、特殊格式缩进、以及其他第三方 provider 的设置。标准库 `json` 只能安全操作 JSON，而对于 YAML、TOML 与 `.env`，模块采用自主实现的文本级更新器（Upserter）：仅在必要路径进行局部插入与替换，**绝不重排或抹除用户未修改的行**。
 3. **零风险备份与事务回滚 (Safe Backup & Rollback)**：
@@ -134,7 +134,7 @@ def test_aider_integration():
 ```
 
 运行验证：
-```bash
+```powershell
 python tests/_test_agents.py
 python tests/run_all.py
 ```
@@ -237,7 +237,7 @@ python tests/run_all.py
       "protocol": "anthropic",
       "installed": true,
       "configured": true,
-      "config_paths": ["/home/user/.claude/settings.json"],
+      "config_paths": ["C:/Users/user/.claude/settings.json"],
       "applied": {
         "at": "2026-04-08 15:30:00",
         "base_url": "http://127.0.0.1:8788",
@@ -281,11 +281,11 @@ python tests/run_all.py
 
 ## 8. 命令行配置器（CLI）
 
-`wb_agents.py` 同时是可执行的配置器，供**客户端不在网关机器上**的场景使用（网关跑在服务器 / NAS / 路由器 / 容器，客户端在另一台电脑）。它不走网关的 `/agents/apply`（那条路只认回环、并拒绝容器部署），而是在客户端机器本地完成全部写入，只通过 HTTP 从网关读取模型表。
+`wb_agents.py` 同时是可执行的配置器，供**客户端不在网关机器上**的场景使用（网关和客户端分别位于两台 Windows 电脑）。它不走网关的 `/agents/apply`（那条路只认回环），而是在客户端机器本地完成全部写入，只通过 HTTP 从网关读取模型表。
 
 ### 8.1 命令一览
 
-```bash
+```powershell
 python wb_agents.py list     [--home DIR] [--state-dir DIR] [--json]
 python wb_agents.py status   [--home DIR] [--state-dir DIR] [--json]
 python wb_agents.py apply    --client CLIENT --base-url URL [--key KEY] [--model MODEL]
@@ -304,13 +304,13 @@ python wb_agents.py restore  --client CLIENT [--home DIR] [--state-dir DIR] [--j
 | 维度 | 看板一键配置（服务端） | CLI（客户端） |
 |---|---|---|
 | 运行位置 | 网关进程所在机器 | 客户端所在机器 |
-| 可用条件 | 回环访问 + 非容器 / OpenWrt | 无限制（能 HTTP 到网关即可） |
+| 可用条件 | Windows 本机回环访问 | 无限制（能 HTTP 到网关即可） |
 | 状态与备份 | `<ACCOUNTS_DIR>/integration-state.json`、`agent-backups/` | `~/.wb-agent-config/`（`--state-dir` 可覆盖），每台机器一份 |
 | 写入与还原逻辑 | `integrate()` / `restore()` / `overview()` / `plan()`（完全共用） | 同左 |
 
 `plan(client_id, base_url, api_key, model, models, home)` 是公开的纯函数：`integrate()` 先 `plan()` 得到全部目标文件内容，再执行「阶段一备份 + 阶段二两阶段写入」。CLI 的 dry-run 与真实写入因此不可能漂移。
 
-网关侧另提供 `GET /agents/cli`（免面板鉴权、无回环限制，内容为仓库内 `wb_agents.py` 原文，不含任何机密），方便远程机器一行 `curl` 取配置器。
+网关侧另提供 `GET /agents/cli`（免面板鉴权、无回环限制，内容为仓库内 `wb_agents.py` 原文，不含任何机密），方便远程机器使用 `Invoke-WebRequest` 下载配置器。
 
 ### 8.3 备份语义的两条边界
 
@@ -323,7 +323,7 @@ python wb_agents.py restore  --client CLIENT [--home DIR] [--state-dir DIR] [--j
 
 维护或扩展本模块时，必须确保以下测试命令通过：
 
-```bash
+```powershell
 # 1. 语法检查
 python -m py_compile wb_agents.py wb_proxy.py
 
